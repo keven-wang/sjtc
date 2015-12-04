@@ -129,7 +129,7 @@ function format(tokens, config){
     clearBuff();
     output.push('\n' + sp4 + '}\n');
     output.push('\n' + sp4 + 'return __buff__.join("");\n');
-    output.push(extraSpace+ "}\n")
+    output.push(extraSpace + "}")
 
     return output.join('');
 }
