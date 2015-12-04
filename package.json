@@ -1,0 +1,31 @@
+{
+    "name": "sjtc",
+    "version": "0.0.1",
+    "description": "a simple javascript template compiler",
+    "author": {
+        "name": "keven-wang",
+        "email": "wang_jian_bo037@126.com"
+    },
+
+    "main": "parser.js",
+
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/keven-wang/sjtc.git"
+    },
+
+    "homepage": "https://github.com/keven-wang/sjtc",    
+
+    "dependencies": {
+        "rich-console" : ""
+    },
+
+    "keywords": [
+        "javascript",
+        "template",
+        "heredoc",
+        "ssi"
+    ],
+
+    "readmeFilename": "README.md"    
+}
