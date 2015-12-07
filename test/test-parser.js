@@ -1,6 +1,6 @@
 var fs = require('fs');
 var parser = require('../parser');
-var cont = fs.readFileSync(__dirname + "/tmpl.html", 'utf-8');
+var cont = fs.readFileSync(__dirname + "/tmpl-2.html", 'utf-8');
 var code = parser.parse(cont, {
     file: __dirname + "/tmpl.html",
     tab_space: 4, 

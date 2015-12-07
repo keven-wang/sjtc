@@ -12,6 +12,7 @@ function foo(obj){
     return str;
 }
 %>
+
 <%if(obj.count && obj.count > 0){%>
     <div class="c-item-list-1 c<%=prop1%> <%=prop1%>">
         <%= prop2 + 1 %><%= prop3 %><%=prop4%>
@@ -28,7 +29,7 @@ function foo(obj){
             <!--#include file="sub.html"-->
         <% } %>
     </div>
-<%}else{%>
+<%}else{
     <div class="no-result">
         <p>暂时还没有内容奥~</p>
     </div>

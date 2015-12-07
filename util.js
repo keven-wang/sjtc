@@ -12,7 +12,7 @@ var RConsole = require('rich-console');
 
 function space(n)  { return n <= 0 ? '' : Array(n + 1).join(' '); }
 function escape(c) { return JSON.stringify(c); }
-function skipEmpty(l) { return l.length > 0; }
+function skipEmpty(l) { return l != null && l.length > 0; }
 function skipBlank(l) { return l.trim().length > 0; }
 function reportError(err){ RConsole.log(err); throw new Error(err.replace(/<\/?\w+>/gi, '')); }
 function insertAtLineStart(cont, inserted){ return cont.replace(/^(.*?[\S]+.*?)$/mg, inserted + '$1'); }
@@ -79,6 +79,65 @@ function reportCircularRefError(refFile, parents){
     }).join('\n');
 
     reportError('<red>exists circular reference! </red>\n' + refMap);
+}
+
+function reportParseError(err, cont, posi, file){
+    var lineNum  = getLineNumByPosi(cont, posi);
+    var lineCont = getLineContByPosi(cont, posi).trim();
+
+    reportError(''
+        + '<red>error info :</red> <yellow>' + err + '</yellow>\n'
+        + '<red>line num   :</red> <yellow>' + lineNum   + '</yellow>\n'
+        + '<red>line cont  :</red> <yellow>' + lineCont  + '</yellow>\n'
+        + '<red>file  info :</red> <yellow>' + (file || '')
+    );     
+}
+
+/**
+ * 获取指定字符串位置对应的行内容.
+ * @param  {cont}content    完整字符串      
+ * @param  {Number}posi     字符位置 
+ * @return {String}
+ */
+function getLineContByPosi(content, posi){
+    var lines = content.split(/\n/);
+    var result, count = 0;
+
+    lines.every(function(l, idx){
+        count += l.length + 1;
+        if(count >= posi){ 
+            result = l; 
+            return false;
+        }else{
+            return true;
+        }
+    });
+
+    return result;  
+}
+
+/**
+ * 获取指定字符串位置对应的行内容.
+ * @param  {cont}content    完整字符串      
+ * @param  {Number}posi     字符位置 
+ * @return {Number}
+ */
+function getLineNumByPosi(content, posi){
+    var lines = content.split(/\n/);
+    var result, count = 0;
+
+    lines.every(function(l, idx){
+        count += l.length + 1;
+
+        if(count >= posi){ 
+            result = idx + 1; 
+            return false;
+        }else{
+            return true;
+        }
+    });
+
+    return result;  
 }
 
 /**
@@ -308,6 +367,52 @@ function parseLines(tokens, conf){
     return { lines: lines, minSpace : minSpace };     
 }
 
+/**
+ * 计算代码块的锁紧深度，正值表示增加一个Tab, 负值表示减少一个tab.
+ * @param  {String}code
+ * @return {Number}
+ */
+function getCodeDepth(code){
+    // 扫描代码块中注释、正则、字符串以外的锁紧起始和结束符号.
+    var m, depth = 0, reg = new RegExp((''
+        + '(/\\*[\\S\\s]*?\\*/)'  // 多行注释中的 {、}、case:
+        + '|(//.*?$)'             // 单行注释中的 {、}、case:
+        + '|([\'"].*?[\'"])'      // 字符串中的 {、}、case:
+        + '|\\{'
+        + '|\\}'
+        + '|(?:'
+        +       '(?:'
+        +          '\\b(?:case|default)\\b\\s*:\\s*'
+        +       ')+'
+        +   ')'
+    ), 'mgi');
+
+    while ( m = reg.exec(code) ){
+        if( m[1] || m[2] || m[3] ) { continue; }
+
+        depth += (m[0] == '}' ? -1 : 1);
+    }
+
+    return depth;
+}
+
+/**
+ * 计算代码块的缩进调整值. 
+ * @param  {String}code
+ * @return {Number}
+ */
+function getAdjustDepth(code){
+    code = code.trim();
+
+    // 处理 } else { 或者 }else if {
+    if(/^\s*\}\s*else(\s+if\s*\(.*?\))?\s*\{/i.test(code)) { return -1; }
+    
+    // 处理连续多个 }, 或者 });
+    if(/^(\s*\}\s*)+[^\}]*?/.test(code)) { return getCodeDepth(code); }
+    
+    return 0;
+}
+
 module.exports = {
     merge  : merge,
     space  : space,
@@ -317,7 +422,13 @@ module.exports = {
     expandSSI : expandSSI,
     parseLines  : parseLines,
     isMultiCont : isMultiCont,
+    reportError : reportError,
     getPreSpace : getPreSpace,
+    getCodeDepth : getCodeDepth,
+    getAdjustDepth : getAdjustDepth,
+    reportParseError  : reportParseError,
+    getLineNumByPosi  : getLineNumByPosi,
+    getLineContByPosi : getLineContByPosi,
     translateHereDoc  : translateHereDoc,
     insertAtLineStart : insertAtLineStart
 };
