@@ -68,7 +68,7 @@ function parse(cont, config) {
     }
 
     if(preIdx != cont.length){
-        matched.push({ type: 'const', val: cont.slice(preIdx, -1) }); 
+        matched.push({ type: 'const', val: cont.slice(preIdx) }); 
     }
 
     return matched;
@@ -86,7 +86,7 @@ function format(tokens, config){
         func_name: '',
         extra_space: 0, 
         func_arg_name: 'obj',
-        always_wrap_insert: false,
+        always_wrap_insert: true,
         first_line_no_space: false,
     }, config);
 

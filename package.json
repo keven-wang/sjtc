@@ -1,6 +1,6 @@
 {
     "name": "sjtc",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "description": "a simple javascript template compiler",
     "author": {
         "name": "keven-wang",
