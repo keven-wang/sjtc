@@ -1,8 +1,9 @@
 var fs = require('fs');
 var parser = require('../parser');
-var cont = fs.readFileSync(__dirname + "/tmpl-2.html", 'utf-8');
+var file = __dirname + "/tmpl/proj-overview.html";
+var cont = fs.readFileSync(file, 'utf-8');
 var code = parser.parse(cont, {
-    file: __dirname + "/tmpl.html",
+    file: file,
     tab_space: 4, 
     extra_space: 4, 
     first_line_no_space: true

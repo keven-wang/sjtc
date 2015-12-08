@@ -14,7 +14,7 @@ function space(n)  { return n <= 0 ? '' : Array(n + 1).join(' '); }
 function escape(c) { return JSON.stringify(c); }
 function skipEmpty(l) { return l != null && l.length > 0; }
 function skipBlank(l) { return l.trim().length > 0; }
-function reportError(err){ RConsole.log(err); throw new Error(err.replace(/<\/?\w+>/gi, '')); }
+function throwError(err){ RConsole.log(err); throw new Error(err.replace(/<\/?\w+>/gi, '')); }
 function insertAtLineStart(cont, inserted){ return cont.replace(/^(.*?[\S]+.*?)$/mg, inserted + '$1'); }
 function isMultiCont(cont) { return cont.split(/\n/).length > 1; }
 
@@ -60,15 +60,46 @@ function hasCircularRef(refFile, parents){
  * @return {void}
  */
 function reportCircularRefError(refFile, parents){
+    if(parents.length == 0) { 
+        throwError('<red>the file <cyan>%s<cyan> exists self-referential!</red>', path.resolve(refFile));
+    }else{
+        throwError('<red>exists circular reference! </red>\n' + getRefMapStr(refFile, parents));
+    }
+}
+
+/**
+ * 抛出解析错误.
+ * @param  {String}err      错误信息
+ * @param  {cont}cont       正在解析的代码内容
+ * @param  {number}posi     错误位置
+ * @param  {string}file     代码内容所在文件
+ * @return {void}
+ */
+function throwParseError(err, cont, posi, file){
+    var line = getLineByPosi(cont, posi);
+
+    throwError('\n'
+        + '\t<red>error info : </red><yellow>' + err + '</yellow>\n'
+        + '\t<red>line num   : </red><yellow>' + line.index   + '</yellow>\n'
+        + '\t<red>line cont  : </red><yellow>' + line.content + '</yellow>\n'
+        + '\t<red>file info  : </red><yellow>' + (file || '') + '</yellow>\n'
+    );     
+}
+
+/**
+ * 获取用字符串表示依赖路径.
+ * @param   {String}refFile         当前文件
+ * @param   {Array<String>}parents  依赖该文件的父文件
+ * @return  {String} 
+ */
+function getRefMapStr(refFile, parents){
     var root  = path.resolve('.');
     refFile   = path.relative(root, refFile);
-    if(parents.length == 0) { 
-        reportError('<red>the file <cyan>%s<cyan> exists self-referential!</red>', refFile);
-    }
 
     var links = parents.slice(0).map(function(i){ return path.relative(root, i); });
     var posi  = links.indexOf(refFile);
-    var refMap = links.map(function(f, idx){
+    
+    return links.map(function(f, idx){
         var catLine = (
               (idx == 0   ) ? '┌- ' 
             : (idx <  posi) ? '|  ↑\n|  '
@@ -76,68 +107,30 @@ function reportCircularRefError(refFile, parents){
             : '   ↑\n   '
         );
         return '<cyan>' + catLine + '</cyan><pink>' + f + '</pink>'
-    }).join('\n');
-
-    reportError('<red>exists circular reference! </red>\n' + refMap);
-}
-
-function reportParseError(err, cont, posi, file){
-    var lineNum  = getLineNumByPosi(cont, posi);
-    var lineCont = getLineContByPosi(cont, posi).trim();
-
-    reportError(''
-        + '<red>error info :</red> <yellow>' + err + '</yellow>\n'
-        + '<red>line num   :</red> <yellow>' + lineNum   + '</yellow>\n'
-        + '<red>line cont  :</red> <yellow>' + lineCont  + '</yellow>\n'
-        + '<red>file  info :</red> <yellow>' + (file || '')
-    );     
+    }).join('\n');  
 }
 
 /**
- * 获取指定字符串位置对应的行内容.
- * @param  {cont}content    完整字符串      
+ * 获取指定字符串位置对应的行信息.
+ * @param  {cont}cont       完整字符串      
  * @param  {Number}posi     字符位置 
- * @return {String}
+ * @return {JSON}
  */
-function getLineContByPosi(content, posi){
-    var lines = content.split(/\n/);
-    var result, count = 0;
+function getLineByPosi(cont, posi){
+    var lines = cont.split(/\n/);
+    var find = null, count = 0;
 
     lines.every(function(l, idx){
-        count += l.length + 1;
-        if(count >= posi){ 
-            result = l; 
+        count += l.length + (idx == 0 ? 0 : 1);
+        if(count > posi){ 
+            find = { content: l, index: idx + 1 }; 
             return false;
         }else{
             return true;
         }
     });
 
-    return result;  
-}
-
-/**
- * 获取指定字符串位置对应的行内容.
- * @param  {cont}content    完整字符串      
- * @param  {Number}posi     字符位置 
- * @return {Number}
- */
-function getLineNumByPosi(content, posi){
-    var lines = content.split(/\n/);
-    var result, count = 0;
-
-    lines.every(function(l, idx){
-        count += l.length + 1;
-
-        if(count >= posi){ 
-            result = idx + 1; 
-            return false;
-        }else{
-            return true;
-        }
-    });
-
-    return result;  
+    return find;  
 }
 
 /**
@@ -164,6 +157,52 @@ function getPreSpace(tokens, posi, tabSpace){
 }
 
 /**
+ * 计算代码块的锁紧深度，正值表示增加一个Tab, 负值表示减少一个tab.
+ * @param  {String}code
+ * @return {Number}
+ */
+function getCodeDepth(code){
+    // 扫描代码块中注释、正则、字符串以外的锁紧起始和结束符号.
+    var m, depth = 0, reg = new RegExp((''
+        + '(/\\*[\\S\\s]*?\\*/)'  // 多行注释中的 {、}、case:
+        + '|(//.*?$)'             // 单行注释中的 {、}、case:
+        + '|([\'"].*?[\'"])'      // 字符串中的 {、}、case:
+        + '|\\{'
+        + '|\\}'
+        + '|(?:'
+        +       '(?:'
+        +          '\\b(?:case|default)\\b\\s*:\\s*'
+        +       ')+'
+        +   ')'
+    ), 'mgi');
+
+    while ( m = reg.exec(code) ){
+        if( m[1] || m[2] || m[3] ) { continue; }
+
+        depth += (m[0] == '}' ? -1 : 1);
+    }
+
+    return depth;
+}
+
+/**
+ * 计算代码块的缩进调整值. 
+ * @param  {String}code
+ * @return {Number}
+ */
+function getAdjustDepth(code){
+    code = code.trim();
+
+    // 处理 } else { 或者 }else if {
+    if(/^\s*\}\s*else(\s+if\s*\(.*?\))?\s*\{/i.test(code)) { return -1; }
+    
+    // 处理连续多个 }, 或者 });
+    if(/^(\s*\}\s*)+[^\}]*?/.test(code)) { return getCodeDepth(code); }
+    
+    return 0;
+}
+
+/**
  * 对将要编译的内容进行预处理，将其中的ssi展开并返回展开后内容.
  * @param  {String}cont
  * @param  {Object}ctx
@@ -175,8 +214,8 @@ function expandSSI(cont, context){
     var parents  = ctx.parents;
     var preSpace = ctx.preSpace;
     var reg = new RegExp((''
-            + '(?:'                // 匹配ssi
-            +     '(^\\s+)?'       // ssi前的前导缩进
+            + '(?:'                 // 匹配ssi
+            +     '(^\\s+)?'        // ssi前的前导缩进
             +     '<!--#include\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
             + ')'
             + '|(?:(^\\s+)?(.+?)$)' // 匹配不包含ssi的非空单行文本
@@ -186,14 +225,23 @@ function expandSSI(cont, context){
         // 对于不包含ssi的普通行非空行，直接在前面补充空格
         if(lineCont) { return (lineSpace || '') + preSpace + lineCont; }
 
-        if(!curFile) { reportError('<cyan>@expandSSI</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
+        if(!curFile) { throwError('<cyan>@expandSSI</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
         var fileCont, dir = path.dirname(curFile);
         var myParents = ctx.parents.slice(0);
         var mySpace  = preSpace + (ssiSpace || '');
         var filePath = path.resolve(path.join(dir, refFile));
 
-        if(!fs.existsSync(filePath)){ reportError('<cyan>@expandSSI</cyan>: <red>the include file <cyan>"' + incFile + '"</cyan> not exists!</red>'); }
+        if(!fs.existsSync(filePath)){ 
+            console.log(myParents);
+
+            throwError(''
+                + '\n<cyan>@expandSSI</cyan>: '
+                + '<red>the include file <cyan>"' + refFile + '"</cyan> not exists!</red>\n'
+                + '\tcurrent file: <pink>' + filePath + '</pink>\n'
+                + '\treference map:\n' + getRefMapStr(refFile, myParents)
+            ); 
+        }
 
         myParents.unshift(curFile);
         if(hasCircularRef(filePath, myParents)){ reportCircularRefError(filePath, myParents); }
@@ -354,7 +402,10 @@ function parseLines(tokens, conf){
         });
 
         
-        spaceCounts.push(preSpace.length);
+        if(l.trim().length > 0){ 
+            spaceCounts.push(preSpace.length); 
+        }
+        
         return preSpace + result.join(' + ');
     });
 
@@ -367,52 +418,6 @@ function parseLines(tokens, conf){
     return { lines: lines, minSpace : minSpace };     
 }
 
-/**
- * 计算代码块的锁紧深度，正值表示增加一个Tab, 负值表示减少一个tab.
- * @param  {String}code
- * @return {Number}
- */
-function getCodeDepth(code){
-    // 扫描代码块中注释、正则、字符串以外的锁紧起始和结束符号.
-    var m, depth = 0, reg = new RegExp((''
-        + '(/\\*[\\S\\s]*?\\*/)'  // 多行注释中的 {、}、case:
-        + '|(//.*?$)'             // 单行注释中的 {、}、case:
-        + '|([\'"].*?[\'"])'      // 字符串中的 {、}、case:
-        + '|\\{'
-        + '|\\}'
-        + '|(?:'
-        +       '(?:'
-        +          '\\b(?:case|default)\\b\\s*:\\s*'
-        +       ')+'
-        +   ')'
-    ), 'mgi');
-
-    while ( m = reg.exec(code) ){
-        if( m[1] || m[2] || m[3] ) { continue; }
-
-        depth += (m[0] == '}' ? -1 : 1);
-    }
-
-    return depth;
-}
-
-/**
- * 计算代码块的缩进调整值. 
- * @param  {String}code
- * @return {Number}
- */
-function getAdjustDepth(code){
-    code = code.trim();
-
-    // 处理 } else { 或者 }else if {
-    if(/^\s*\}\s*else(\s+if\s*\(.*?\))?\s*\{/i.test(code)) { return -1; }
-    
-    // 处理连续多个 }, 或者 });
-    if(/^(\s*\}\s*)+[^\}]*?/.test(code)) { return getCodeDepth(code); }
-    
-    return 0;
-}
-
 module.exports = {
     merge  : merge,
     space  : space,
@@ -422,13 +427,12 @@ module.exports = {
     expandSSI : expandSSI,
     parseLines  : parseLines,
     isMultiCont : isMultiCont,
-    reportError : reportError,
+    throwError  : throwError,
     getPreSpace : getPreSpace,
     getCodeDepth : getCodeDepth,
+    getLineByPosi : getLineByPosi,  
     getAdjustDepth : getAdjustDepth,
-    reportParseError  : reportParseError,
-    getLineNumByPosi  : getLineNumByPosi,
-    getLineContByPosi : getLineContByPosi,
+    throwParseError : throwParseError,
     translateHereDoc  : translateHereDoc,
     insertAtLineStart : insertAtLineStart
 };

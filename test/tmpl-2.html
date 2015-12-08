@@ -1,0 +1,32 @@
+<%
+function foo(obj){
+    var str = trim(@eof 
+        <div class="c-item-list-1 c#{obj.prop1 % 4 + 1} #{obj.prop2}">
+            #{obj.prop1 + 1} #{obj.prop2} #{obj.prop3}
+            <div class="c-card">
+                <div class="ctn-wrap chart-wrap j-star-chart-list"></div>
+            </div>
+        </div>
+    eof), var2 = 123;
+
+    return str;
+}
+%>
+
+<%if(obj.count && obj.count > 0){%>
+    <div class="c-item-list-1 c<%=prop1%> <%=prop1%>">
+        <% if(count > 10){ %>
+            <div class="view-more">
+                <a href="/talk/ls.htm?id=<%= id %>&type=2">
+                    <span class="more-txt">查看更多</span>
+                    <i class="more-icon"></i>
+                </a>
+            </div>
+            <!--#include file="sub.html"-->
+        <% } %>
+    </div>
+<%}else{%>
+    <div class="no-result">
+        <p>暂时还没有内容奥~</p>
+    </div>
+<%}%>

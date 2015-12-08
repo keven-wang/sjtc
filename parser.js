@@ -5,34 +5,6 @@ var util  = require('./util');
 var space = util.space;
 
 /**
- * 获取静态文本、插值对应的输出代码.
- * @param   {Array<JSON>}tokens     token序列
- * @param   {String}extraSpace      每行行首需要额外添加的起始空格
- * @param   [JSON]                  其他配置参数
- * @return  {JSON}
- */
-function getConstCode(tokens, extraSpace, config){
-    var conf = util.merge({tab_space: 4}, config);
-
-    var lineInfo = util.parseLines(tokens);
-    var lines = lineInfo.lines;
-    if(lines.length == 0) { return ''; }
-
-    var depth = tokens[0].depth;
-    var minSpace  = lineInfo.minSpace;
-    var preSpace  = extraSpace  + space(conf.tab_space * depth);
-    var lineSpace = preSpace    + space(conf.tab_space);
-    var fnMap = function(l) { return lineSpace + '+ ' + l.slice(minSpace); };
-
-    return (lines.length == 1
-        ? '\n' + preSpace + '__buff__.push(' + lines[0].trim() + ');\n' 
-        : '\n' + preSpace + '__buff__.push(""\n' 
-               + lines.map(fnMap).join('\n') 
-               + '\n' + preSpace + ');\n'
-    );
-}
-
-/**
  * 将文本解析为由常量、插值、代码块3种token组成的列表.
  * @param   {String}cont
  * @parma   {JSON}conf
@@ -44,7 +16,7 @@ function parse(content, conf) {
     var start_posi = 0, end_posi = 0, ctx = [], tokens = [];
     var isInCmt = false, cur_depth = 0, cur_type;
 
-    content.split(reg).forEach(function(i){
+    cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
         start_posi = end_posi;
@@ -57,22 +29,25 @@ function parse(content, conf) {
         }
 
         if(i == '<%=') {
-            ctx.unshift({type: 'insert', posi: start_posi + 1});
+            ctx.unshift({type: 'insert', posi: start_posi});
             return;
         }      
 
         if(i == '<%') {
-            ctx.unshift({type: 'code', posi: start_posi + 1});
+            ctx.unshift({type: 'code', posi: start_posi});
             return;
         }     
 
         if (i == '-->') {
             if(ctx.length == 0) { 
-                util.reportParseError('未找到对应的开始标签"<!--"', cont, start_posi, conf.file);
+                util.throwParseError(
+                    '未找到标签<cyan>--></cyan>对应的开始标签<cyan><!--</cyan>', 
+                    cont, start_posi, conf.file
+                ); 
             }            
             
             if(ctx[0].type != 'comment') { 
-                util.reportParseError('错误的标签嵌套!', cont, start_posi, conf.file);                               
+                util.throwParseError('错误的标签嵌套!', cont, start_posi, conf.file); 
             }
             
             isInCmt = false;
@@ -84,7 +59,10 @@ function parse(content, conf) {
             cur_type = ctx.length > 0 ? ctx[0].type : null;
             
             if(ctx.length == 0 || (cur_type != 'insert' && cur_type != 'code')) { 
-                util.reportParseError('无法找到标签"<%"对应的开始标签!', cont, start_posi, conf.file);             
+                util.throwParseError(
+                    '无法找到标签<cyan>%></cyan>对应的开始标签!', 
+                    cont, start_posi, conf.file
+                );             
             }
             
             ctx.shift();
@@ -95,7 +73,7 @@ function parse(content, conf) {
 
         var type  = ctx.length > 0 ? ctx[0].type : 'const';
         var val   = type == 'insert' ? i.trim() : i;
-        var token = {type: type, val: val, depth: cur_depth };
+        var token = {type: type, val: val, posi: start_posi, depth: cur_depth };
 
         tokens.push(token);
 
@@ -106,10 +84,10 @@ function parse(content, conf) {
     });
 
     if(ctx.length > 0){ 
-        console.log(cont);
-        util.reportParseError('存在未闭合的标签!', cont, ctx[0].posi, conf.file);       
+        util.throwParseError('存在未闭合的标签!', cont, ctx[0].posi, conf.file);       
     }
 
+    console.log(tokens);
     return tokens;
 }
 
@@ -171,6 +149,34 @@ function format(tokens, config){
     output.push(extraSpace + "}")
 
     return output.join('');
+}
+
+/**
+ * 获取静态文本、插值对应的输出代码.
+ * @param   {Array<JSON>}tokens     token序列
+ * @param   {String}extraSpace      每行行首需要额外添加的起始空格
+ * @param   [JSON]                  其他配置参数
+ * @return  {JSON}
+ */
+function getConstCode(tokens, extraSpace, config){
+    var conf = util.merge({tab_space: 4}, config);
+
+    var lineInfo = util.parseLines(tokens);
+    var lines = lineInfo.lines;
+    if(lines.length == 0) { return ''; }
+
+    var depth = tokens[0].depth;
+    var minSpace  = lineInfo.minSpace;
+    var preSpace  = extraSpace  + space(conf.tab_space * depth);
+    var lineSpace = preSpace    + space(conf.tab_space);
+    var fnMap = function(l) { return lineSpace + '+ ' + l.slice(minSpace); };
+
+    return (lines.length == 1
+        ? '\n' + preSpace + '__buff__.push(' + lines[0].trim() + ');\n' 
+        : '\n' + preSpace + '__buff__.push(""\n' 
+               + lines.map(fnMap).join('\n') 
+               + '\n' + preSpace + ');\n'
+    );
 }
 
 exports.parse = function(cont, conf){
