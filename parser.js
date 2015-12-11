@@ -3,6 +3,7 @@
 var fs    = require('fs');
 var path  = require('path');
 var util  = require('./util');
+var RConsole = require('rich-console');
 
 /**
  * 将文本解析为由常量、插值、代码块3种token组成的列表.
@@ -10,11 +11,13 @@ var util  = require('./util');
  * @parma   {JSON}conf
  * @return  {Array<JSON>}
  */
-function parse(content, conf) {
-    var cont = expandSSI(content, conf);
+function parse(content, config) {
+    var conf = util.merge({tab_space: 4}, config);
+    var data = expandSSI(content, conf);
     var reg  = /(<%%|<%=|<%|<!--|-->|%%>|%>)/;
+    var posiData = data.posiData, cont =data.cont;
+    var isInCmt  = false, cur_depth = 0, cur_type;
     var start_posi = 0, end_posi = 0, ctx = [], tokens = [];
-    var isInCmt = false, cur_depth = 0, cur_type;
 
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
@@ -42,12 +45,12 @@ function parse(content, conf) {
             if(ctx.length == 0) { 
                 util.throwParseError(
                     '未找到标签<cyan>--></cyan>对应的开始标签<cyan><!--</cyan>', 
-                    cont, start_posi, conf.file
+                    cont, posiData, start_posi
                 ); 
             }            
             
             if(ctx[0].type != 'comment') { 
-                util.throwParseError('错误的标签嵌套!', cont, start_posi, conf.file); 
+                util.throwParseError('错误的标签嵌套!', posiData, start_posi);
             }
             
             isInCmt = false;
@@ -61,7 +64,7 @@ function parse(content, conf) {
             if(ctx.length == 0 || (cur_type != 'insert' && cur_type != 'code')) { 
                 util.throwParseError(
                     '无法找到标签<cyan>%></cyan>对应的开始标签!', 
-                    cont, start_posi, conf.file
+                    cont, posiData, start_posi
                 );             
             }
             
@@ -85,7 +88,11 @@ function parse(content, conf) {
     });
 
     if(ctx.length > 0){ 
-        util.throwParseError('存在未闭合的标签!', cont, ctx[0].posi, conf.file);       
+        // console.log('未闭合标签位置： %s', ctx[0].posi)
+        // console.log('posiData:');
+        // console.log(posiData);
+        
+        util.throwParseError('存在未闭合的标签!', posiData, ctx[0].posi);       
     }
 
     return tokens;
@@ -109,8 +116,8 @@ function format(tokens, config){
         first_line_no_space: false,
     }, config);
 
-    var extraSpace = typeof conf.extra_space == 'number' ? space(conf.extra_space) : ''; 
-    var firstLineSpace = conf.first_line_no_space == true ? '' : space(conf.extra_space);
+    var extraSpace = space(conf.extra_space); 
+    var firstLineSpace = conf.first_line_no_space == true ? '' : extraSpace;
     var sp8 = extraSpace + space(conf.tab_space * 2);
     var sp4 = extraSpace + space(conf.tab_space);
     var buffName = conf.output_buff_name;
@@ -126,9 +133,7 @@ function format(tokens, config){
     function clearBuff(){
         if(buff.length == 0) { return; }
 
-        if(util.isCtrlStatementEnd(preCode)) { 
-            output.push('\n'); 
-        }
+        if(util.isCtrlStatementEnd(preCode)) { output.push('\n'); }
         
         output.push(getConstCode(buff, sp8, conf) + '\n');
         buff.length = 0;
@@ -194,31 +199,44 @@ function getConstCode(tokens, extraSpace, config){
                 + lines.map(fnMap).join('\n') 
                 + '\n' + preSpace + ');'
           )
-    ) ;
+    );
 }
 
 /**
  * 对将要编译的内容进行预处理，将其中的ssi展开并返回展开后内容.
- * @param  {String}cont
+ * @param  {String}content
  * @param  {Object}ctx
  * @return {String}
  */
-function expandSSI(cont, context){
-    var ctx = util.merge({preSpace: '', parents: []}, context);
-    var curFile  = ctx.file;
-    var parents  = ctx.parents;
+function expandSSI(content, context){
+    var ctx = util.merge({
+        tab_space: 4,
+        preSpace: '', 
+        posiData: [],
+        parents: [], 
+        index: 0,
+    }, context);
+    
+    var tabSpace = util.space(ctx.tab_space);
+    var curFile  = path.resolve(ctx.file);
     var preSpace = ctx.preSpace;
-    var reg = new RegExp((''
-            + '(?:'                 // 匹配ssi
-            +     '(^\\s+)?'        // ssi前的前导缩进
-            +     '<!--#include\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
-            + ')'
-            + '|(?:(^\\s+)?(.+?)$)' // 匹配不包含ssi的非空单行文本
-        ), 'mgi');
+    var parents  = ctx.parents;
+    var curIndx  = ctx.index;
+    var addLen = 0, reg = new RegExp((''
+        + '(?:'              // 匹配ssi
+        +     '(^[ \\t]*)?'  // ssi的前导缩进
+        +     '<!--#include\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
+        + ')'
+        + '|(?:(^[ \\t]*)?(\\S.+?)$)'  // 匹配不包含ssi的非空单行文本
+    ), 'mgi');
 
-    return cont.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont){
+    var cont = content.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont, lastIndex){
         // 对于不包含ssi的普通行非空行，直接在前面补充空格
-        if(lineCont) { return (lineSpace || '') + preSpace + lineCont; }
+        if(lineCont) { 
+            var result = (lineSpace || '') + preSpace + lineCont;
+            addLen += result.length - m.length;
+            return result; 
+        }
 
         if(!curFile) { util.throwError('<cyan>@expandSSI</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
@@ -230,22 +248,42 @@ function expandSSI(cont, context){
         if(!fs.existsSync(filePath)){ 
             util.throwError(''
                 + '\n<cyan>@expandSSI</cyan>: '
-                + '<red>the include file <cyan>"' + refFile + '"</cyan> not exists!</red>\n'
-                + '\tcurrent file: <pink>' + filePath + '</pink>\n'
-                + '\treference map:\n' + util.getRefMapStr(refFile, myParents)
+                + '<red>the include file <cyan>"' + filePath   + '"</cyan> is not exists! '
+                + 'the following is the include link:</red>\n' 
+                + util.getRefMapStr(filePath, myParents)
             ); 
         }
 
         myParents.unshift(curFile);
         
         if(util.hasCircularRef(filePath, myParents)){ 
-            util.reportCircularRefError(filePath, myParents); 
+            util.throwCircularRefError(filePath, myParents); 
         }
 
         fileCont = fs.readFileSync(filePath, 'utf-8');
-        
-        return expandSSI(fileCont, { file: filePath, preSpace: mySpace, parents: myParents });
+       
+        var ssiSpaceLen = (ssiSpace||'').length;
+        var myIndex = curIndx + lastIndex + addLen + ssiSpaceLen;        
+        var cont = expandSSI(fileCont, { 
+            posiData: ctx.posiData,
+            preSpace: mySpace, 
+            parents: myParents,
+            index: myIndex,
+            file: filePath,
+        }).cont;
+
+        addLen += cont.length - m.length;
+        return cont;
     });
+
+    ctx.posiData.push({
+        file: curFile,
+        start: curIndx, 
+        end: curIndx + cont.length,
+        preSpace : ctx.preSpace
+    });
+
+    return { cont: cont, posiData: ctx.posiData };
 }
 
 /**

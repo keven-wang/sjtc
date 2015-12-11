@@ -1,5 +1,5 @@
 # sjtc
-a simple javascript template compiler. the compiler can compile
+a simple javascript template compiler based on regexp. the compiler can compile
 javascript template to be a javascript readability function.the
 compiler support SSI and heredoc, the following is an example.
 

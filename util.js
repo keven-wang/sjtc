@@ -56,7 +56,7 @@ function merge(){
  * @return {Boolean}
  */
 function hasCircularRef(refFile, parents){
-    return parents.slice(0).map(function(i){ 
+    return parents.map(function(i){ 
         return path.resolve(i); 
     }).indexOf(path.resolve(refFile)) != -1;
 }
@@ -68,50 +68,71 @@ function hasCircularRef(refFile, parents){
  * @return {void}
  */
 function throwCircularRefError(refFile, parents){
-    if(parents.length == 0) { 
-        throwError('<red>the file <cyan>%s<cyan> exists self-referential!</red>', path.resolve(refFile));
-    }else{
-        throwError('<red>exists circular reference! </red>\n' + getRefMapStr(refFile, parents));
-    }
+    throwError('<red>exists circular reference! </red>\n' + getRefMapStr(refFile, parents));
 }
 
 /**
  * 抛出解析错误.
- * @param  {String}err      错误信息
- * @param  {cont}cont       正在解析的代码内容
- * @param  {number}posi     错误位置
- * @param  {string}file     代码内容所在文件
+ * @param  {String}err          错误信息
+ * @param  {string}mapData      位置与文件映射数据
+ * @param  {number}posi         错误位置
  * @return {void}
  */
-function throwParseError(err, cont, posi, file){
-    var line = getLineByPosi(cont, posi);
+function throwParseError(err, mapData, posi){
+    var data = getFileDataByPosi(mapData, posi);
+    var cont = adjustLeftSpace(
+        fs.readFileSync(data.file, 'utf-8'), 
+        data.preSpace
+    );
+
+    var line = getLineByPosi(cont, posi - data.start);
 
     throwError('\n'
         + '\t<red>error info : </red><yellow>' + err + '</yellow>\n'
-        + '\t<red>line num   : </red><yellow>' + line.index   + '</yellow>\n'
-        + '\t<red>line cont  : </red><yellow>' + line.content + '</yellow>\n'
-        + '\t<red>file info  : </red><yellow>' + (file || '') + '</yellow>\n'
+        + '\t<red>line num   : </red><yellow>' + line.index + '</yellow>\n'
+        + '\t<red>line cont  : </red><yellow>' + line.content.trim() + '</yellow>\n'
+        + '\t<red>file info  : </red><yellow>' + (data.file || '')   + '</yellow>\n'
     );     
 }
 
 /**
  * 获取用字符串表示依赖路径.
- * @param   {String}refFile         当前文件
- * @param   {Array<String>}parents  依赖该文件的父文件
+ * @param   {String...}refLinks 
  * @return  {String} 
  */
-function getRefMapStr(refFile, parents){
+function getRefMapStr(){
     var root  = path.resolve('.');
-    refFile   = path.relative(root, refFile);
-
-    var links = parents.slice(0).map(function(i){ return path.relative(root, i); });
-    var posi  = links.indexOf(refFile);
+    var args  = [].concat.apply([], [].slice.call(arguments));
+    var links = args.filter(skipEmpty).map(function(i){ 
+                    return path.relative(root, i); 
+                });
     
-    return links.map(function(f, idx){
+    if(links.length == 0) { return '<pink>' + links[0] + '</pink>'; }
+
+    var first = links[0], posi = links.indexOf(first, 1);
+    
+    // no circular reference
+    if(posi == -1) { 
+        return links.map(function(i, idx){
+            var catLine = idx == 0 ? '' : '↑\n';
+            return '<cyan>' + catLine + '</cyan><pink>' + i + '</pink>'
+        }).join('\n')
+    }
+    
+    // has self reference 
+    if(posi == 1 && links[1] == first) {
+        return links.slice(1).map(function(f, idx){
+            var catLine = idx == 0 ? '┌--┐\n|  ↓\n' : '↑\n';
+            return '<cyan>' + catLine + '</cyan><pink>' + f + '</pink>'
+        }).join('\n');          
+    }
+
+    // has circular reference
+    return links.slice(1).map(function(f, idx){
         var catLine = (
-              (idx == 0   ) ? '┌- ' 
-            : (idx <  posi) ? '|  ↑\n|  '
-            : (idx == posi) ? '|  ↑\n└→ '
+              (idx == 0) ? '┌- ' 
+            : (idx <  posi - 1) ? '|  ↑\n|  '
+            : (idx == posi - 1) ? '|  ↑\n└→ '
             : '   ↑\n   '
         );
         return '<cyan>' + catLine + '</cyan><pink>' + f + '</pink>'
@@ -139,6 +160,25 @@ function getLineByPosi(cont, posi){
     });
 
     return find;  
+}
+
+/**
+ * 根据token位置计算token所在的文件信息.
+ * @param  {Array<JSON>}mapData
+ * @param  {integer}
+ * @return {String}
+ */
+function getFileDataByPosi(mapData, posi){
+    if(!mapData || !posi || mapData.length == 0) { return ''; }
+
+    var find = null;
+
+    mapData.every(function(i){
+        if(i.start <= posi) { find = i; }
+        return find == null;
+    });
+    
+    return find || mapData[mapData.length -1];
 }
 
 /**
@@ -247,7 +287,8 @@ module.exports = {
 
     getRefMapStr : getRefMapStr,
     getCodeDepth : getCodeDepth,
-    getLineByPosi : getLineByPosi,  
+    getLineByPosi : getLineByPosi,
+    getFileByPosi : getFileDataByPosi,  
     getAdjustDepth : getAdjustDepth,
     hasCircularRef : hasCircularRef,
     isCtrlStatementEnd : isCtrlStatementEnd,

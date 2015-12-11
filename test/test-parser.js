@@ -1,7 +1,7 @@
 var fs = require('fs');
 var parser = require('../parser');
 //var file = __dirname + "/tmpl/proj-overview.html";
-var file = __dirname + "/tmpl-2.html";
+var file = __dirname + "/tmpl.html";
 var cont = fs.readFileSync(file, 'utf-8');
 var code = parser.parse(cont, {
     file: file,
