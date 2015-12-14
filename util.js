@@ -7,6 +7,8 @@
 'use strict';
 
 var fs = require('fs');
+var vm = require('vm');
+var util = require('util');
 var path = require('path');
 var RConsole = require('rich-console');
 
@@ -88,11 +90,46 @@ function throwParseError(err, mapData, posi){
     var line = getLineByPosi(cont, posi - data.start);
 
     throwError('\n'
-        + '\t<red>error info : </red><yellow>' + err + '</yellow>\n'
-        + '\t<red>line num   : </red><yellow>' + line.index + '</yellow>\n'
-        + '\t<red>line cont  : </red><yellow>' + line.content.trim() + '</yellow>\n'
-        + '\t<red>file info  : </red><yellow>' + (data.file || '')   + '</yellow>\n'
+        + '  <red>error info : </red><yellow>' + err + '</yellow>\n'
+        + '  <red>line cont  : </red><yellow>' + line.content.trim() + '</yellow>\n'
+        + '  <red>line num   : </red><yellow>' + line.index + '</yellow>\n'
+        + '  <red>file info  : </red><yellow>' + (data.file || '')   + '</yellow>\n'
     );     
+}
+
+/**
+ * 抛出错误的标签嵌套错误.
+ * @param   {String}errInfo
+ * @param   {Object}posiMapData
+ * @param   {integer}tag1Posi
+ * @param   {integer}tag2Posi
+ */
+function throwInvalidTagNestingError(errInfo, posiMapData, tag1Posi, tag2Posi){
+    var tag1Data = getFileDataByPosi(posiMapData, tag1Posi);
+    var tag2Data = getFileDataByPosi(posiMapData, tag2Posi);
+    
+    var tag1Cont = adjustLeftSpace(
+        fs.readFileSync(tag1Data.file, 'utf-8'), 
+        tag1Data.preSpace
+    );
+
+    var tag2Cont = adjustLeftSpace(
+        fs.readFileSync(tag2Data.file, 'utf-8'), 
+        tag2Data.preSpace
+    );    
+
+    var tag1Line = getLineByPosi(tag1Cont, tag1Posi - tag1Data.start);
+    var tag2Line = getLineByPosi(tag1Cont, tag2Posi - tag2Data.start);
+
+    throwError('\n'
+        + '  <red>error info : </red><yellow>' + errInfo + '</yellow>\n'
+        + '  <red>tag1 line cont : </red><yellow>' + tag1Line.content.trim() + '</yellow>\n'
+        + '  <red>tag1 line num  : </red><yellow>' + tag1Line.index + '</yellow>\n'
+        + '  <red>tag1 file info : </red><yellow>' + (tag1Data.file || '')   + '</yellow>\n'
+        + '  <red>tag2 line cont : </red><yellow>' + tag2Line.content.trim() + '</yellow>\n'
+        + '  <red>tag2 line num  : </red><yellow>' + tag2Line.index + '</yellow>\n'
+        + '  <red>tag2 file info : </red><yellow>' + (tag2Data.file || '')   + '</yellow>\n'
+    );      
 }
 
 /**
@@ -251,6 +288,29 @@ function isCtrlStatementEnd(token){
 }
 
 /**
+ * 检查输出代码是否有JS语法错误.
+ * @param   {Array<String>}buff
+ * @return  {boolean|Error}
+ */
+function existsScriptError(buff, file){
+    var code = 'var obj = ' + buff.join('') + ';';
+    var sandbox = { e: null };
+
+    try{
+        vm.runInNewContext(code , sandbox, file || 'nukonwn-file');
+        return false;
+    
+    }catch(e){  
+        var errInfo  = e.toString();
+        var numStart = errInfo.indexOf(file) + file.length + 1;
+        var numMatch = numStart == -1 ? null : errInfo.slice(numStart).match(/\d+/);
+        var lineNum  = numMatch ? numMatch[0] : '';
+
+        return { message: errInfo, file: file, line: lineNum };
+    }
+}
+
+/**
  * 调整多行代码的左侧空格.
  * @param  {String}cont
  * @param  {String}leftSpace
@@ -291,11 +351,14 @@ module.exports = {
     getFileByPosi : getFileDataByPosi,  
     getAdjustDepth : getAdjustDepth,
     hasCircularRef : hasCircularRef,
+    getFileDataByPosi : getFileDataByPosi,
+    existsScriptError : existsScriptError,
     isCtrlStatementEnd : isCtrlStatementEnd,
     isCtrlStatementStart : isCtrlStatementStart,
     removeDuplicateBlank : removeDuplicateBlank,
 
     throwError : throwError,
     throwParseError : throwParseError,
-    throwCircularRefError : throwCircularRefError
+    throwCircularRefError : throwCircularRefError,
+    throwInvalidTagNestingError : throwInvalidTagNestingError
 };

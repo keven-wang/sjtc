@@ -1,8 +1,8 @@
 'use strict';
 
-var fs    = require('fs');
-var path  = require('path');
-var util  = require('./util');
+var fs = require('fs');
+var path = require('path');
+var util = require('./util');
 var RConsole = require('rich-console');
 
 /**
@@ -11,62 +11,66 @@ var RConsole = require('rich-console');
  * @parma   {JSON}conf
  * @return  {Array<JSON>}
  */
-function parse(content, config) {
-    var conf = util.merge({tab_space: 4}, config);
+function parse(content, conf) {
     var data = expandSSI(content, conf);
-    var reg  = /(<%%|<%=|<%|<!--|-->|%%>|%>)/;
-    var posiData = data.posiData, cont =data.cont;
-    var isInCmt  = false, cur_depth = 0, cur_type;
-    var start_posi = 0, end_posi = 0, ctx = [], tokens = [];
+    var reg  = /(<%=|<%%|<%|<!--|-->|%%>|%>)/;
+    var posiData = data.posiData, cont = data.cont;
+    var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
+    var curDepth = 0, curType, isInCmt = false, mapData = [];
+
+    var getFile = function(posi) {
+        return util.getFileDataByPosi(posiData, posi).file;
+    };
+
+    var throwParseError = function(tagPosi, errInfo){
+        util.throwParseError(errInfo, cont, posiData, startPosi);      
+    };
+
+    var throwInvliadTagNestingErr = function(tag2Posi){
+        util.throwInvalidTagNestingError(
+            '错误的标签嵌套!', posiData, ctx[0].posi, tag2Posi
+        );        
+    };
 
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
-        start_posi = end_posi;
-        end_posi  += i.length;
+        startPosi = endPosi;
+        endPosi  += i.length;
 
-        if (i == '<!--') { 
-            ctx.unshift({type: 'comment', posi: start_posi});
-            isInCmt = true; 
+        if(i == '<!--') { 
+            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
+            ctx.unshift({type: 'comment', posi: startPosi});
+            isInCmt = true;
             return;
         }
 
         if(i == '<%=') {
-            ctx.unshift({type: 'insert', posi: start_posi});
+            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
+            ctx.unshift({type: 'insert', posi: startPosi});
             return;
         }      
 
         if(i == '<%') {
-            ctx.unshift({type: 'code', posi: start_posi});
+            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
+            ctx.unshift({type: 'code', posi: startPosi});
             return;
         }     
 
         if (i == '-->') {
-            if(ctx.length == 0) { 
-                util.throwParseError(
-                    '未找到标签<cyan>--></cyan>对应的开始标签<cyan><!--</cyan>', 
-                    cont, posiData, start_posi
-                ); 
-            }            
-            
-            if(ctx[0].type != 'comment') { 
-                util.throwParseError('错误的标签嵌套!', posiData, start_posi);
-            }
+            if(ctx.length == 0) { throwParseError(startPosi, '未找到标签<cyan>--></cyan>对应的开始标签<cyan><!--</cyan>'); }            
+            if(ctx[0].type != 'comment') { throwInvliadTagNestingErr(startPosi); }
             
             isInCmt = false;
             ctx.shift();
             return;
         }
 
-        if (i == '%>') {
-            cur_type = ctx.length > 0 ? ctx[0].type : null;
+        if(i == '%>') {
+            var curType = ctx.length > 0 ? ctx[0].type : null;
             
-            if(ctx.length == 0 || (cur_type != 'insert' && cur_type != 'code')) { 
-                util.throwParseError(
-                    '无法找到标签<cyan>%></cyan>对应的开始标签!', 
-                    cont, posiData, start_posi
-                );             
-            }
+            if(ctx.length == 0) { throwParseError(startPosi, '无法找到标签<cyan>%></cyan>对应的开始标签!'); }
+            if(curType != 'insert' && curType != 'code') { throwInvliadTagNestingErr(startPosi); }            
             
             ctx.shift();
             return;
@@ -77,45 +81,30 @@ function parse(content, config) {
         var emap  = {'<%%': '<%', '%%>': '%>'};
         var type  = ctx.length > 0 ? ctx[0].type : 'const';
         var val   = type == 'insert' ? i.trim() : (emap[i] || i);
-        var token = {type: type, val: val, posi: start_posi, depth: cur_depth };
+        var token = {type: type, val: val, file: getFile(startPosi), posi: startPosi, depth: curDepth };
 
         tokens.push(token);
 
         if(type == 'code') { 
-            cur_depth += util.getCodeDepth(i); 
+            curDepth += util.getCodeDepth(i); 
             token.adjustDetph = util.getAdjustDepth(val);
         }
     });
 
-    if(ctx.length > 0){ 
-        // console.log('未闭合标签位置： %s', ctx[0].posi)
-        // console.log('posiData:');
-        // console.log(posiData);
-        
-        util.throwParseError('存在未闭合的标签!', posiData, ctx[0].posi);       
-    }
-
-    return tokens;
+    if(ctx.length > 0){ throwParseError(ctx[0].posi, '存在未闭合的标签!'); }
+    
+    return { tokens: tokens, mapData: {} };
 }
 
 /**
  * 将token序列中的元素分别格式化并合并后返回.
  * @param   {Array<JSON>}tokens
- * @param   {JSON}config
+ * @param   {Array<JSON>}mapData
+ * @param   {JSON}conf
  * @return  {String}
  */
-function format(tokens, config){
+function format(tokens, mapData, conf){
     var space = util.space;
-    var conf = util.merge({ 
-        tab_space: 4, 
-        func_name: '',
-        extra_space: 0, 
-        func_arg_name: 'obj',
-        output_buff_name : '__bf',
-        always_wrap_insert: false,
-        first_line_no_space: false,
-    }, config);
-
     var extraSpace = space(conf.extra_space); 
     var firstLineSpace = conf.first_line_no_space == true ? '' : extraSpace;
     var sp8 = extraSpace + space(conf.tab_space * 2);
@@ -123,7 +112,7 @@ function format(tokens, config){
     var buffName = conf.output_buff_name;
     var argName  = conf.func_arg_name;
 
-    var preCode = null, cur_depth = 0, buff = [], output = [
+    var preCode = null, curDepth = 0, buff = [], output = [
         firstLineSpace + 'function ' + conf.func_name + '(' + argName + ') {\n', 
         sp4 + 'var '  + buffName + ' = [];\n\n', 
         sp4 + 'with(' + argName  + '){\n',
@@ -166,9 +155,23 @@ function format(tokens, config){
     clearBuff();
     output.push('\n' + sp4 + '}\n');
     output.push('\n' + sp4 + 'return ' + buffName + '.join("");\n');
-    output.push(extraSpace + "}")
+    output.push(extraSpace + "}");
 
-    return util.removeDuplicateBlank(output.join(''));
+    var err = util.existsScriptError(output, conf.file);
+
+    if(err){
+        //console.log('err stack length: %s', typeof err.stack);
+        RConsole.log(''
+            + '<red>@format => exists script error:'
+            +   '\n  error : <pink>' + err.message + '</pink>'
+            +   '\n  file  : <cyan>' + err.file    + '</cyan>'
+            + '</red>'
+        );
+
+        throw err;
+    }else{
+        return util.removeDuplicateBlank(output.join(''));
+    }
 }
 
 /**
@@ -211,7 +214,8 @@ function getConstCode(tokens, extraSpace, config){
 function expandSSI(content, context){
     var ctx = util.merge({
         tab_space: 4,
-        preSpace: '', 
+        preSpace: '',
+        incFiles: [],
         posiData: [],
         parents: [], 
         index: 0,
@@ -219,15 +223,16 @@ function expandSSI(content, context){
     
     var tabSpace = util.space(ctx.tab_space);
     var curFile  = path.resolve(ctx.file);
+    var incFiles = ctx.incFiles;
     var preSpace = ctx.preSpace;
     var parents  = ctx.parents;
     var curIndx  = ctx.index;
     var addLen = 0, reg = new RegExp((''
         + '(?:'              // 匹配ssi
         +     '(^[ \\t]*)?'  // ssi的前导缩进
-        +     '<!--#include\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
+        +     '<!--#include(?:_once)?\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
         + ')'
-        + '|(?:(^[ \\t]*)?(\\S.+?)$)'  // 匹配不包含ssi的非空单行文本
+        + '|(?:(^[ \\t]*)?(\\S.*?)$)'  // 匹配不包含ssi的非空行
     ), 'mgi');
 
     var cont = content.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont, lastIndex){
@@ -240,10 +245,11 @@ function expandSSI(content, context){
 
         if(!curFile) { util.throwError('<cyan>@expandSSI</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
-        var fileCont, dir = path.dirname(curFile);
+        var dir = path.dirname(curFile);
         var myParents = ctx.parents.slice(0);
-        var mySpace  = preSpace + (ssiSpace || '');
-        var filePath = path.resolve(path.join(dir, refFile));
+        var mySpace   = preSpace + (ssiSpace || '');
+        var filePath  = path.resolve(path.join(dir, refFile));
+        var isIncOnce = m.search(/<!--#include_once/i) != -1;
 
         if(!fs.existsSync(filePath)){ 
             util.throwError(''
@@ -259,26 +265,31 @@ function expandSSI(content, context){
         if(util.hasCircularRef(filePath, myParents)){ 
             util.throwCircularRefError(filePath, myParents); 
         }
-
-        fileCont = fs.readFileSync(filePath, 'utf-8');
        
-        var ssiSpaceLen = (ssiSpace||'').length;
-        var myIndex = curIndx + lastIndex + addLen + ssiSpaceLen;        
-        var cont = expandSSI(fileCont, { 
+        if(isIncOnce && incFiles.indexOf(filePath) != -1){
+            RConsole.log('<cyan>@expandSSI=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
+            addLen -= m.length;
+            return '';
+        }
+
+        var myIndex = curIndx + lastIndex + addLen + (ssiSpace||'').length;        
+        var cont = expandSSI(fs.readFileSync(filePath, 'utf-8'), { 
             posiData: ctx.posiData,
+            incFiles: incFiles,
             preSpace: mySpace, 
             parents: myParents,
             index: myIndex,
-            file: filePath,
+            file: filePath
         }).cont;
-
+        
         addLen += cont.length - m.length;
+        incFiles.push(filePath);
         return cont;
     });
 
     ctx.posiData.push({
-        file: curFile,
         start: curIndx, 
+        file: curFile,
         end: curIndx + cont.length,
         preSpace : ctx.preSpace
     });
@@ -457,6 +468,18 @@ function getConstLines(tokens, conf){
 
 // export ----------------------------------------------------
 
-exports.parse = function(cont, conf){
-    return format(parse(cont, conf), conf);
+exports.parse = function(cont, config){
+    var conf = util.merge({ 
+        tab_space: 4, 
+        func_name: '',
+        extra_space: 0, 
+        func_arg_name: 'obj',
+        output_buff_name : '__bf',
+        always_wrap_insert: false,
+        first_line_no_space: false,
+    }, config);
+
+    var tokenData = parse(cont, conf);
+    
+    return format(tokenData.tokens, tokenData.mapData, conf);
 }
