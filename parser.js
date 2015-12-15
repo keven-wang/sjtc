@@ -12,7 +12,7 @@ var RConsole = require('rich-console');
  * @return  {Array<JSON>}
  */
 function parse(content, conf) {
-    var data = expandSSI(content, conf);
+    var data = expandInclude(content, conf);
     var reg  = /(<%=|<%%|<%|<!--|-->|%%>|%>)/;
     var posiData = data.posiData, cont = data.cont;
     var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
@@ -206,12 +206,12 @@ function getConstCode(tokens, extraSpace, config){
 }
 
 /**
- * 对将要编译的内容进行预处理，将其中的ssi展开并返回展开后内容.
+ * 对将要编译的内容进行预处理，将其中的include展开并返回展开后内容.
  * @param  {String}content
  * @param  {Object}ctx
  * @return {String}
  */
-function expandSSI(content, context){
+function expandInclude(content, context){
     var ctx = util.merge({
         tab_space: 4,
         preSpace: '',
@@ -243,7 +243,7 @@ function expandSSI(content, context){
             return result; 
         }
 
-        if(!curFile) { util.throwError('<cyan>@expandSSI</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
+        if(!curFile) { util.throwError('<cyan>@expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
         var dir = path.dirname(curFile);
         var myParents = ctx.parents.slice(0);
@@ -253,7 +253,7 @@ function expandSSI(content, context){
 
         if(!fs.existsSync(filePath)){ 
             util.throwError(''
-                + '\n<cyan>@expandSSI</cyan>: '
+                + '\n<cyan>@expandInclude</cyan>: '
                 + '<red>the include file <cyan>"' + filePath   + '"</cyan> is not exists! '
                 + 'the following is the include link:</red>\n' 
                 + util.getRefMapStr(filePath, myParents)
@@ -267,13 +267,13 @@ function expandSSI(content, context){
         }
        
         if(isIncOnce && incFiles.indexOf(filePath) != -1){
-            RConsole.log('<cyan>@expandSSI=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
+            RConsole.log('<cyan>@expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
             addLen -= m.length;
             return '';
         }
 
         var myIndex = curIndx + lastIndex + addLen + (ssiSpace||'').length;        
-        var cont = expandSSI(fs.readFileSync(filePath, 'utf-8'), { 
+        var cont = expandInclude(fs.readFileSync(filePath, 'utf-8'), { 
             posiData: ctx.posiData,
             incFiles: incFiles,
             preSpace: mySpace, 
