@@ -4,7 +4,7 @@ it can compile javascript template to be readability javascript
 function. it support the following features:
  
   * embed javascript code : ***<%...%>***
-  * insert variant  : ***<%=...%>
+  * insert variant  : ***<%=...%>***
   * escape charators: ***<%% ==> <%, %%> ==> %>***
   * include file : ***<!--#include file="file-path.html"-->***
   * include file once : ***<!--#include file="file-path.html"-->***
@@ -45,10 +45,10 @@ the contents from tmpl.html
 the code used to compile the template
 ```javascript
 var fs = require('fs');
+var sjtc = require('sjtc');
 var file = __dirname + "/tmpl.html";
-var parser = require('../../parser');
 
-var tmplCode = parser.parse(file);
+var tmplCode = sjtc.parse(file);
 var tmplFn = new Function('return ' + tmplCode)();
 
 var users  = [
@@ -116,12 +116,12 @@ function (obj) {
 while you can config the generate code style throw the following 
 config tiems:
 
-    * func_name             default     ''
-    * extra_space           default     0
-    * func_arg_name         default     obj
-    * input_tab_space       default     4 
-    * output_tab_space      default     4
-    * output_buff_name      default     __bf
-    * always_wrap_insert    default     false
-    * first_line_no_space   default     false
+  * func_name             default     ''
+  * extra_space           default     0
+  * func_arg_name         default     obj
+  * input_tab_space       default     4 
+  * output_tab_space      default     4
+  * output_buff_name      default     __bf
+  * always_wrap_insert    default     false
+  * first_line_no_space   default     false
 
