@@ -3,11 +3,11 @@ sjtc is a simple javascript template compiler based on regexp.
 it can compile javascript template to be readability javascript 
 function. it support the following features:
  
-  * embed javascript code : ***<%...%>***
-  * insert variant  : ***<%=...%>***
-  * escape charators: ***<%% ==> <%, %%> ==> %>***
-  * include file : ***<!--#include file="file-path.html"-->***
-  * include file once : ***<!--#include file="file-path.html"-->***
+  * embed javascript code : **<%...%>**
+  * insert variant  : **<%=...%>**
+  * escape charators: **<%%** equals **<%** and  **%%>** equals **%>**
+  * include file : **<!--#include file="file-path.html"-->**
+  * include file once : **<!--#include file="file-path.html"-->**
   * support heredoc in embed code: 
 ```javascript
 <%
@@ -129,13 +129,13 @@ function (obj) {
 
 while you can config the generate code style through the following 
 config tiems:
-  *  ***func_name***　　　　　　　　default     ''
-  *  ***extra_space***　　　　　　　default     0
-  *  ***func_arg_name***　　　　　 default     obj
-  *  ***input_tab_space***　　　　 default     4 
-  *  ***output_tab_space***　　　　default     4
-  *  ***output_buff_name***　　　　default     __bf
-  *  ***always_wrap_insert***　　 default     false
-  *  ***first_line_no_space***　　default     false
+  *  **func_name**　　　　　　　　default     ''
+  *  **extra_space**　　　　　　　default     0
+  *  **func_arg_name**　　　　　 default     obj
+  *  **input_tab_space**　　　　 default     4 
+  *  **output_tab_space**　　　　default     4
+  *  **output_buff_name**　　　　default     __bf
+  *  **always_wrap_insert**　　 default     false
+  *  **first_line_no_space**　　default     false
 
  
