@@ -1,108 +1,127 @@
 # sjtc
 sjtc is a simple javascript template compiler based on regexp. 
-it can the can compile javascript template to be a readability 
-javascript  function. it support SSI and heredoc, the following 
-is an example.
+it can compile javascript template to be readability javascript 
+function. it support the following features:
+ 
+  * embed javascript code : ***<%...%>***
+  * insert variant  : ***<%=...%>
+  * escape charators: ***<%% ==> <%, %%> ==> %>***
+  * include file : ***<!--#include file="file-path.html"-->***
+  * include file once : ***<!--#include file="file-path.html"-->***
 
+the following is an example to explain how to use it:
+
+the contents from render-user.html
 ```html
 <%
-function foo(obj){
-    var str = @eof 
-        <div class="c-item-list-1 c#{obj.prop1 % 4 + 1} #{obj.prop2}">
-            #{obj.prop1 + 1} #{obj.prop2} #{obj.prop3}
-            <div class="c-card">
-                <div class="ctn-wrap chart-wrap j-star-chart-list"></div>
-            </div>
-        </div>
-    eof, var2 = 123;
-
-    return str;
+function render_user(u){
+    return @eof 
+        <li class="list-item user" data-order="#{u.order}">
+            <span class="user-name">#{u.name}</span>
+            <span class="user-age" >#{u.age}</span>
+            <span class="user-gender">#{u.gender}</span>
+        </li>
+    eof.trim();
 }
 %>
-<%if(obj.count && obj.count > 0){%>
-    <div class="c-item-list-1 c<%=prop1%> <%=prop1%>">
-        <%= prop2 + 1 %><%= prop3 %><%=prop4%>
-        <div class="c-card">
-            <div class="ctn-wrap chart-wrap j-star-chart-list"></div>
-        </div>
-        <% if(count > 10){ %>
-            <div class="home-more">
-                <a href="/topic/ls.htm?resId=<%= starId %>&resType=3"><span class="more-txt">查看更多</span><i class="more-icon"></i></a>
-            </div>
-            <!--#include file="sub.html"-->
-        <% } %>
-    </div>
+```
+the contents from tmpl.html
+```html
+<!--#include_once file="render-user.html"-->
+
+<%if(obj.users && obj.users.length > 0){%>
+    <ul class="user-list">
+        <% obj.users.forEach(function(u){ %>
+            <%= render_user(u) %>
+        <% }); %>
+    </ul>
 <%}else{%>
-    <div class="no-fans-result no-list">
-        <p>还没有相关的说说哦~</p>
+    <div class="no-result">
+        <p>no user record!</p>
     </div>
 <%}%>
-
-还有内容奥!
 ```
 
-will be compile to :
-```js
+the code used to compile the template
+```javascript
+var fs = require('fs');
+var file = __dirname + "/tmpl.html";
+var parser = require('../../parser');
+
+var tmplCode = parser.parse(file);
+var tmplFn = new Function('return ' + tmplCode)();
+
+var users  = [
+    { order: 1,  name: 'user-1',  age: 24, gender: 'f'  },
+    { order: 2,  name: 'user-2',  age: 24, gender: 'fm' },
+    { order: 3,  name: 'user-3',  age: 23, gender: 'f'  },
+    { order: 5,  name: 'user-4',  age: 24, gender: 'fm' },
+    { order: 6,  name: 'user-5',  age: 24, gender: 'f'  },
+    { order: 7,  name: 'user-6',  age: 34, gender: 'fm' },
+    { order: 8,  name: 'user-7',  age: 32, gender: 'f'  },
+    { order: 9,  name: 'user-8',  age: 52, gender: 'f'  },
+    { order: 10, name: 'user-9',  age: 57, gender: 'f'  },
+    { order: 11, name: 'user-10', age: 18, gender: 'f'  }
+];
+
+console.log( '\n----------generate code----------\n\n%s', tmplCode );
+console.log( '\n----------generate html----------\n\n%s', tmplFn({ users: users }) );
+```
+
+the result code that generate by stjc 
+```javascript
 function (obj) {
-    var __buff__ = [];
+    var __bf = [];
 
     with(obj){
         "use strict";
 
-        function foo(obj){
-            var str = (""
-                + "<div class=\"c-item-list-1 c" +  ( obj.prop1 % 4 + 1 )  + " " + obj.prop2 + "\">"
-                +      ( obj.prop1 + 1 )  + " " + obj.prop2 + " " + obj.prop3
-                +     "<div class=\"c-card\">"
-                +         "<div class=\"ctn-wrap chart-wrap j-star-chart-list\"></div>"
-                +     "</div>"
-                + "</div>"
-            ), var2 = 123;
-
-            return str;
+        function render_user(u){
+            return (""
+                + "<li class=\"list-item user\" data-order=\"" + u.order + "\">"
+                +     "<span class=\"user-name\">" + u.name + "</span>"
+                +     "<span class=\"user-age\" >" + u.age + "</span>"
+                +     "<span class=\"user-gender\">" + u.gender + "</span>"
+                + "</li>"
+            ).trim();
         }
 
+        if(obj.users && obj.users.length > 0){
+            __bf.push("<ul class=\"user-list\">");
 
-        if(obj.count && obj.count > 0){
+            obj.users.forEach(function(u){ 
+                __bf.push(( render_user(u) ));
 
-            __buff__.push(""
-                + "<div class=\"c-item-list-1 c" + prop1 + " " + prop1 + "\">"
-                +      ( prop2 + 1 )  + prop3 + prop4
-                +     "<div class=\"c-card\">"
-                +         "<div class=\"ctn-wrap chart-wrap j-star-chart-list\"></div>"
-                +     "</div>"
-            );
+            }); 
 
-                if(count > 10){
-
-                    __buff__.push(""
-                        + "<div class=\"home-more\">"
-                        +     "<a href=\"/topic/ls.htm?resId=" + starId + "&resType=3\"><span class=\"more-txt\">查看更多</span><i class=\"more-icon\"></i></a>"
-                        + "</div>"
-                        + "<div class=\"home-more\">"
-                        +     "<a href=\"/topic/ls.htm?resId=" + starId + "&resType=3\"><span class=\"more-txt\">查看更多</span><i class=\"more-icon\"></i></a>"
-                        + "</div>"
-                    );
-
-                }
-
-            __buff__.push("</div>");
+            __bf.push("</ul>");
 
         }else{
 
-            __buff__.push(""
-                + "<div class=\"no-fans-result no-list\">"
-                +     "<p>还没有相关的说说哦~</p>"
+            __bf.push(""
+                + "<div class=\"no-result\">"
+                +     "<p>no user record!</p>"
                 + "</div>"
             );
 
         }
 
-        __buff__.push("还有内容奥");
-
     }
 
-    return __buff__.join("");
+    return __bf.join("");
 }
 
-```
+````
+
+while you can config the generate code style throw the following 
+config tiems:
+
+    * func_name             default     ''
+    * extra_space           default     0
+    * func_arg_name         default     obj
+    * input_tab_space       default     4 
+    * output_tab_space      default     4
+    * output_buff_name      default     __bf
+    * always_wrap_insert    default     false
+    * first_line_no_space   default     false
+

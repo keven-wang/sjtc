@@ -13,7 +13,7 @@ var RConsole = require('rich-console');
  */
 function parse(content, conf) {
     var data = expandInclude(content, conf);
-    var reg  = /(<%=|<%%|<%|<!--|-->|%%>|%>)/;
+    var reg  = /(<%=|<%%|<%|%%>|%>|<!--|-->)/;
     var posiData = data.posiData, cont = data.cont;
     var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
     var curDepth = 0, curType, isInCmt = false, mapData = [];
@@ -32,6 +32,7 @@ function parse(content, conf) {
         );        
     };
 
+    console.log('cont.split(reg).length: %s', cont.split(reg).length);
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
@@ -92,39 +93,60 @@ function parse(content, conf) {
     });
 
     if(ctx.length > 0){ throwParseError(ctx[0].posi, '存在未闭合的标签!'); }
-    
-    return { tokens: tokens, mapData: {} };
+
+    return tokens;
 }
 
 /**
  * 将token序列中的元素分别格式化并合并后返回.
  * @param   {Array<JSON>}tokens
- * @param   {Array<JSON>}mapData
  * @param   {JSON}conf
  * @return  {String}
  */
-function format(tokens, mapData, conf){
+function format(tokens, conf){
     var space = util.space;
     var extraSpace = space(conf.extra_space); 
     var firstLineSpace = conf.first_line_no_space == true ? '' : extraSpace;
-    var sp8 = extraSpace + space(conf.tab_space * 2);
-    var sp4 = extraSpace + space(conf.tab_space);
+    var sp8 = extraSpace + space(conf.output_tab_space * 2);
+    var sp4 = extraSpace + space(conf.output_tab_space);
     var buffName = conf.output_buff_name;
     var argName  = conf.func_arg_name;
 
-    var preCode = null, curDepth = 0, buff = [], output = [
+    var preCode = null, curDepth = 0; 
+    var buff = [], output = [
         firstLineSpace + 'function ' + conf.func_name + '(' + argName + ') {\n', 
         sp4 + 'var '  + buffName + ' = [];\n\n', 
         sp4 + 'with(' + argName  + '){\n',
         sp8 + '"use strict";\n\n'
     ];
 
-    function clearBuff(){
-        if(buff.length == 0) { return; }
+    var outLen  = output.join('').length;
+    var mapData = [];
 
-        if(util.isCtrlStatementEnd(preCode)) { output.push('\n'); }
+    // 向输出数组中写入内容的同事记录下内容所在的文件.
+    // 目前只记录代码块, 也就是<%...%>中的内容所在
+    // 的文件信息，插值<%=...%>错误的定位比较麻烦，
+    // 暂时还没有想好怎么实现。
+    function appendCont(cont, file){
+        var cLen = cont.length;
+
+        if(file) { 
+            mapData.push({ 
+                file  : file, 
+                start : outLen, 
+                end   : outLen + cLen 
+            }); 
+        }
         
-        output.push(getConstCode(buff, sp8, conf) + '\n');
+        output.push(cont);
+        outLen += cLen;
+    };
+
+    function flushConstBuff(){
+        if(buff.length == 0) { return; }
+        
+        if(util.isCtrlStatementEnd(preCode)) { appendCont('\n'); }
+        appendCont(getConstCode(buff, sp8, conf) + '\n');
         buff.length = 0;
     }
 
@@ -135,42 +157,48 @@ function format(tokens, mapData, conf){
         }
 
         var val = translateHereDoc(t.val, conf);
-        var preSpace = sp8 + space(conf.tab_space * (t.depth + t.adjustDetph));
+        var preSpace = sp8 + space(conf.output_tab_space * (t.depth + t.adjustDetph));
         var codeCont = util.adjustLeftSpace(val, preSpace, conf);
         var hasConstBeforeCode = buff.length > 0;
 
-        clearBuff();
+        flushConstBuff();
         
         if( hasConstBeforeCode
             || util.isCtrlStatementStart(t) 
             || util.isCtrlStatementEnd(preCode)) { 
     
-            output.push('\n'); 
+            appendCont('\n'); 
         }
         
         preCode = t;
-        output.push(codeCont + '\n');            
+        appendCont(codeCont + '\n', t.file);            
     });
 
-    clearBuff();
-    output.push('\n' + sp4 + '}\n');
-    output.push('\n' + sp4 + 'return ' + buffName + '.join("");\n');
-    output.push(extraSpace + "}");
+    flushConstBuff();
+    appendCont('\n' + sp4 + '}\n');
+    appendCont('\n' + sp4 + 'return ' + buffName + '.join("");\n');
+    appendCont(extraSpace + "}");
+    output = output.join('');
+    
+    var err = util.existsScriptError(output, 'line-num-in-grenate-code');
 
-    var err = util.existsScriptError(output, conf.file);
-
-    if(err){
-        //console.log('err stack length: %s', typeof err.stack);
+    if(!err){
+        return util.removeDuplicateBlank(output);
+    
+    }else{
+        var file = (err.line 
+            ? util.getFileByLine(output, mapData, err.line)
+            : 'sorry, can not locate the file where the error in correctly!, '
+              + 'you can test to search it in the file: ' + conf.file
+        );
+        
         RConsole.log(''
-            + '<red>@format => exists script error:'
-            +   '\n  error : <pink>' + err.message + '</pink>'
-            +   '\n  file  : <cyan>' + err.file    + '</cyan>'
-            + '</red>'
+            + '<cyan>@stjc.format =></cyan><red> exists syntax error in you template code, please resolve them.</red>'
+            + '\n  <yellow>file  </yellow>: <green>' + file        + '</green>'
+            + '\n  <yellow>error </yellow>: <pink>'  + err.message + '</pink>'
         );
 
-        throw err;
-    }else{
-        return util.removeDuplicateBlank(output.join(''));
+        throw new Error(err.message);        
     }
 }
 
@@ -182,7 +210,7 @@ function format(tokens, mapData, conf){
  * @return  {JSON}
  */
 function getConstCode(tokens, extraSpace, config){
-    var conf = util.merge({tab_space: 4}, config);
+    var conf = util.merge({output_tab_space: 4}, config);
     var lineInfo = getConstLines(tokens, conf);
     var lines = lineInfo.lines.filter(util.skipBlank);
     var space = util.space;
@@ -192,8 +220,8 @@ function getConstCode(tokens, extraSpace, config){
     var depth = tokens[0].depth;
     var minSpace  = lineInfo.minSpace;
     var buffName  = conf.output_buff_name;
-    var preSpace  = extraSpace  + space(conf.tab_space * depth);
-    var lineSpace = preSpace    + space(conf.tab_space);
+    var preSpace  = extraSpace  + space(conf.output_tab_space * depth);
+    var lineSpace = preSpace    + space(conf.output_tab_space);
     var fnMap = function(l) { return lineSpace + '+ ' + l.slice(minSpace); };
 
     return (lines.length == 1
@@ -213,7 +241,7 @@ function getConstCode(tokens, extraSpace, config){
  */
 function expandInclude(content, context){
     var ctx = util.merge({
-        tab_space: 4,
+        input_tab_space: 4,
         preSpace: '',
         incFiles: [],
         posiData: [],
@@ -221,18 +249,18 @@ function expandInclude(content, context){
         index: 0,
     }, context);
     
-    var tabSpace = util.space(ctx.tab_space);
+    var tabSpace = util.space(ctx.input_tab_space);
     var curFile  = path.resolve(ctx.file);
     var incFiles = ctx.incFiles;
     var preSpace = ctx.preSpace;
     var parents  = ctx.parents;
     var curIndx  = ctx.index;
     var addLen = 0, reg = new RegExp((''
-        + '(?:'              // 匹配ssi
-        +     '(^[ \\t]*)?'  // ssi的前导缩进
+        + '(?:'              // 匹配include
+        +     '(^[ \\t]*)?'  // include的前导缩进
         +     '<!--#include(?:_once)?\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
         + ')'
-        + '|(?:(^[ \\t]*)?(\\S.*?)$)'  // 匹配不包含ssi的非空行
+        + '|(?:(^[ \\t]*)?(\\S.*?)$)'  // 匹配不包含include的非空行
     ), 'mgi');
 
     var cont = content.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont, lastIndex){
@@ -243,7 +271,7 @@ function expandInclude(content, context){
             return result; 
         }
 
-        if(!curFile) { util.throwError('<cyan>@expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
+        if(!curFile) { util.throwError('<cyan>@stjc.expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
         var dir = path.dirname(curFile);
         var myParents = ctx.parents.slice(0);
@@ -253,7 +281,7 @@ function expandInclude(content, context){
 
         if(!fs.existsSync(filePath)){ 
             util.throwError(''
-                + '\n<cyan>@expandInclude</cyan>: '
+                + '\n<cyan>@stjc.expandInclude</cyan>: '
                 + '<red>the include file <cyan>"' + filePath   + '"</cyan> is not exists! '
                 + 'the following is the include link:</red>\n' 
                 + util.getRefMapStr(filePath, myParents)
@@ -267,7 +295,7 @@ function expandInclude(content, context){
         }
        
         if(isIncOnce && incFiles.indexOf(filePath) != -1){
-            RConsole.log('<cyan>@expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
+            RConsole.log('<cyan>@stjc.expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
             addLen -= m.length;
             return '';
         }
@@ -370,8 +398,8 @@ function translateHereDoc(cont, conf){
  * @return Array<JSON>
  */
 function getConstLines(tokens, conf){
-    var config = util.merge({ tab_space : 4}, conf);
-    var tabSpace = util.space(config.tab_space), lines = [];
+    var config = util.merge({ input_tab_space : 4}, conf);
+    var tabSpace = util.space(config.input_tab_space), lines = [];
     var alwaysWrapInsert = config.always_wrap_insert == true;
     var minSpace, spaceCounts = [], estr = util.estr;
     
@@ -468,18 +496,23 @@ function getConstLines(tokens, conf){
 
 // export ----------------------------------------------------
 
-exports.parse = function(cont, config){
+exports.parse = function(file, config){
+    if(!fs.existsSync(file)){
+        throw new Error("@sjtc.parse => the file '" + file + "' not exists!");
+    }
+
+    var cont = fs.readFileSync(file, 'utf-8');    
     var conf = util.merge({ 
-        tab_space: 4, 
+        file: file,
         func_name: '',
         extra_space: 0, 
         func_arg_name: 'obj',
+        input_tab_space: 4, 
+        output_tab_space: 4,
         output_buff_name : '__bf',
         always_wrap_insert: false,
         first_line_no_space: false,
     }, config);
 
-    var tokenData = parse(cont, conf);
-    
-    return format(tokenData.tokens, tokenData.mapData, conf);
+    return format(parse(cont, conf), conf);
 }

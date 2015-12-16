@@ -108,6 +108,9 @@ function throwInvalidTagNestingError(errInfo, posiMapData, tag1Posi, tag2Posi){
     var tag1Data = getFileDataByPosi(posiMapData, tag1Posi);
     var tag2Data = getFileDataByPosi(posiMapData, tag2Posi);
     
+    console.log(posiMapData);
+    console.log('tag1Data: %s', estr(tag1Data));
+
     var tag1Cont = adjustLeftSpace(
         fs.readFileSync(tag1Data.file, 'utf-8'), 
         tag1Data.preSpace
@@ -200,18 +203,44 @@ function getLineByPosi(cont, posi){
 }
 
 /**
+ * 根据行号查找错误位于的文件, 如果无法定位返回null.
+ * @param  {String}cont
+ * @param  {Array<JSON>}mapData
+ * @param  {Number}ln
+ * @return {String|null}
+ */
+function getFileByLine(cont, mapData, ln){
+    if(cont.length == 0 || !mapData || mapData.length == 0) { 
+        return null; 
+    }
+
+    var lines = cont.split('\n');
+    var lineC = lines[ln - 1];
+    var start = cont.indexOf(lineC);
+    var end   = start + lineC.length;
+    var find  = null;
+
+    mapData.every(function(i){
+        if(i.start <= start && i.end >= end){ find = i.file; }
+        return find == null;
+    });
+
+    return find;  
+}
+
+/**
  * 根据token位置计算token所在的文件信息.
  * @param  {Array<JSON>}mapData
  * @param  {integer}
- * @return {String}
+ * @return {Object}
  */
 function getFileDataByPosi(mapData, posi){
-    if(!mapData || !posi || mapData.length == 0) { return ''; }
+    if(!mapData || mapData.length == 0 || posi < 0) { return null; }
 
     var find = null;
 
     mapData.every(function(i){
-        if(i.start <= posi) { find = i; }
+        if(i.start <= posi && i.end >= posi) { find = i; }
         return find == null;
     });
     
@@ -292,8 +321,8 @@ function isCtrlStatementEnd(token){
  * @param   {Array<String>}buff
  * @return  {boolean|Error}
  */
-function existsScriptError(buff, file){
-    var code = 'var obj = ' + buff.join('') + ';';
+function existsScriptError(cont, file){
+    var code = 'var obj = ' + cont + ';';
     var sandbox = { e: null };
 
     try{
@@ -318,9 +347,9 @@ function existsScriptError(buff, file){
  * @return {String}
  */
 function adjustLeftSpace(cont, leftSpace, config){
-    var conf = merge(conf, { tab_space: 4 });
+    var conf = merge(conf, { output_tab_space: 4 });
     var minSpace, spaces = [], preSpace = leftSpace || '';
-    var lines = cont.replace(/\t/g, space(conf.tab_space)).split(/\n/);
+    var lines = cont.replace(/\t/g, space(conf.output_tab_space)).split(/\n/);
     
     lines.forEach(function(l){
         if(l.trim().length > 0) { 
@@ -348,6 +377,7 @@ module.exports = {
     getRefMapStr : getRefMapStr,
     getCodeDepth : getCodeDepth,
     getLineByPosi : getLineByPosi,
+    getFileByLine : getFileByLine,
     getFileByPosi : getFileDataByPosi,  
     getAdjustDepth : getAdjustDepth,
     hasCircularRef : hasCircularRef,

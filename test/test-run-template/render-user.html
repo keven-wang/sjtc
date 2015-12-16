@@ -1,0 +1,11 @@
+<%
+function render_user(u){
+    return @eof 
+        <li class="list-item user" data-order="#{u.order}">
+            <span class="user-name">#{u.name}</span>
+            <span class="user-age" >#{u.age}</span>
+            <span class="user-gender">#{u.gender}</span>
+        </li>
+    eof.trim();
+}
+%>

@@ -1,0 +1,13 @@
+<!--#include_once file="render-user.html"-->
+
+<%if(obj.users && obj.users.length > 0){%>
+    <ul class="user-list">
+        <% obj.users.forEach(function(u){ %>
+            <%= render_user(u) %>
+        <% }); %>
+    </ul>
+<%}else{%>
+    <div class="no-result">
+        <p>no user record!</p>
+    </div>
+<%}%>
