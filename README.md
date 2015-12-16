@@ -3,12 +3,12 @@ sjtc is a simple javascript template compiler based on regexp.
 it can compile javascript template to be readability javascript 
 function. it support the following features:
  
-  * embed javascript code : **<%...%>**
-  * insert variant  : **<%=...%>**
-  * escape charators: **<%%** equals **<%** and  **%%>** equals **%>**
-  * include file : **<!--#include file="file-path.html"-->**
-  * include file once : **<!--#include file="file-path.html"-->**
-  * support heredoc in embed code: 
+  * **embed javascript code** : **<%...%>**
+  * **insert variant**: **<%=...%>**
+  * **escape charators**: **<%%** equals **<%** and  **%%>** equals **%>**
+  * **include file**: **<!--#include file="file-path.html"-->**
+  * **include file once**: **<!--#include_once file="file-path.html"-->**
+  * **support heredoc in embed code**: 
 ```javascript
 <%
 function render_user(u){
