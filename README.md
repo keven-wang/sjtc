@@ -8,6 +8,20 @@ function. it support the following features:
   * escape charators: ***<%% ==> <%, %%> ==> %>***
   * include file : ***<!--#include file="file-path.html"-->***
   * include file once : ***<!--#include file="file-path.html"-->***
+  * support heredoc in embed code: 
+```javascript
+<%
+function render_user(u){
+    return @eof 
+        <li class="list-item user" data-order="#{u.order}">
+            <span class="user-name">#{u.name}</span>
+            <span class="user-age" >#{u.age}</span>
+            <span class="user-gender">#{u.gender}</span>
+        </li>
+    eof.trim();
+}
+%>
+```
 
 the following is an example to explain how to use it:
 
@@ -113,15 +127,15 @@ function (obj) {
 
 ````
 
-while you can config the generate code style throw the following 
+while you can config the generate code style through the following 
 config tiems:
+  *  ***func_name***　　　　　　　　default     ''
+  *  ***extra_space***　　　　　　　default     0
+  *  ***func_arg_name***　　　　　 default     obj
+  *  ***input_tab_space***　　　　 default     4 
+  *  ***output_tab_space***　　　　default     4
+  *  ***output_buff_name***　　　　default     __bf
+  *  ***always_wrap_insert***　　 default     false
+  *  ***first_line_no_space***　　default     false
 
-  * func_name             default     ''
-  * extra_space           default     0
-  * func_arg_name         default     obj
-  * input_tab_space       default     4 
-  * output_tab_space      default     4
-  * output_buff_name      default     __bf
-  * always_wrap_insert    default     false
-  * first_line_no_space   default     false
-
+ 
