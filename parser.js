@@ -26,13 +26,13 @@ function parse(content, conf) {
         util.throwParseError(errInfo, cont, posiData, startPosi);      
     };
 
-    var throwInvliadTagNestingErr = function(tag2Posi){
+    var throwInvliadTagNestingErr = function(tag2, tag2Posi){
         util.throwInvalidTagNestingError(
-            '错误的标签嵌套!', posiData, ctx[0].posi, tag2Posi
+            'invalid tag nesting: <pink>' + ctx[0].val + ' ' + tag2 + '</pink>', 
+            posiData, ctx[0].posi, tag2Posi
         );        
     };
 
-    console.log('cont.split(reg).length: %s', cont.split(reg).length);
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
@@ -40,27 +40,27 @@ function parse(content, conf) {
         endPosi  += i.length;
 
         if(i == '<!--') { 
-            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
-            ctx.unshift({type: 'comment', posi: startPosi});
+            if(ctx.length > 0){ throwInvliadTagNestingErr(i, startPosi) }
+            ctx.unshift({type: 'comment', val: '<!--', posi: startPosi});
             isInCmt = true;
             return;
         }
 
         if(i == '<%=') {
-            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
-            ctx.unshift({type: 'insert', posi: startPosi});
+            if(ctx.length > 0){ throwInvliadTagNestingErr(i, startPosi) }
+            ctx.unshift({type: 'insert', val: '<%=', posi: startPosi});
             return;
         }      
 
         if(i == '<%') {
-            if(ctx.length > 0){ throwInvliadTagNestingErr(startPosi) }
-            ctx.unshift({type: 'code', posi: startPosi});
+            if(ctx.length > 0){ throwInvliadTagNestingErr(i, startPosi) }
+            ctx.unshift({type: 'code', val: '<%', posi: startPosi});
             return;
         }     
 
         if (i == '-->') {
-            if(ctx.length == 0) { throwParseError(startPosi, '未找到标签<cyan>--></cyan>对应的开始标签<cyan><!--</cyan>'); }            
-            if(ctx[0].type != 'comment') { throwInvliadTagNestingErr(startPosi); }
+            if(ctx.length == 0) { throwParseError(startPosi, 'can not find the matched start tag <pink><!--</pink> for the tag <pink>' + i + '</pink>'); }            
+            if(ctx[0].type != 'comment') { throwInvliadTagNestingErr(i, startPosi); }
             
             isInCmt = false;
             ctx.shift();
@@ -70,8 +70,8 @@ function parse(content, conf) {
         if(i == '%>') {
             var curType = ctx.length > 0 ? ctx[0].type : null;
             
-            if(ctx.length == 0) { throwParseError(startPosi, '无法找到标签<cyan>%></cyan>对应的开始标签!'); }
-            if(curType != 'insert' && curType != 'code') { throwInvliadTagNestingErr(startPosi); }            
+            if(ctx.length == 0) { throwParseError(startPosi, 'can not find the matched start tag <pink>%></pink> for the tag <pink>' + i + '</pink>'); }
+            if(curType != 'insert' && curType != 'code') { throwInvliadTagNestingErr(i, startPosi); }            
             
             ctx.shift();
             return;
@@ -92,7 +92,7 @@ function parse(content, conf) {
         }
     });
 
-    if(ctx.length > 0){ throwParseError(ctx[0].posi, '存在未闭合的标签!'); }
+    if(ctx.length > 0){ throwParseError(ctx[0].posi, 'exists not closed tag: <pink>' + ctx[0].val) + '</pink>!'; }
 
     return tokens;
 }

@@ -8,11 +8,11 @@ function. it support the following features:
   * **escape charators**: **<%%** equals **<%** and  **%%>** equals **%>**
   * **include file**: **<!--#include file="file-path.html"-->**
   * **include file once**: **<!--#include_once file="file-path.html"-->**
-  * **support heredoc in embed code**: 
+  * support **heredoc** in embed code in the from **"@(\w+) [\S\s]*? \1\b"**, for example: 
 ```javascript
 <%
 function render_user(u){
-    return @eof 
+    return @eof  // you can use any words after @
         <li class="list-item user" data-order="#{u.order}">
             <span class="user-name">#{u.name}</span>
             <span class="user-age" >#{u.age}</span>

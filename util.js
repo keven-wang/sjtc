@@ -85,7 +85,7 @@ function throwParseError(err, mapData, posi){
     var cont = adjustLeftSpace(
         fs.readFileSync(data.file, 'utf-8'), 
         data.preSpace
-    );
+    ).slice(data.preSpace.length);
 
     var line = getLineByPosi(cont, posi - data.start);
 
@@ -107,9 +107,6 @@ function throwParseError(err, mapData, posi){
 function throwInvalidTagNestingError(errInfo, posiMapData, tag1Posi, tag2Posi){
     var tag1Data = getFileDataByPosi(posiMapData, tag1Posi);
     var tag2Data = getFileDataByPosi(posiMapData, tag2Posi);
-    
-    console.log(posiMapData);
-    console.log('tag1Data: %s', estr(tag1Data));
 
     var tag1Cont = adjustLeftSpace(
         fs.readFileSync(tag1Data.file, 'utf-8'), 
@@ -122,7 +119,7 @@ function throwInvalidTagNestingError(errInfo, posiMapData, tag1Posi, tag2Posi){
     );    
 
     var tag1Line = getLineByPosi(tag1Cont, tag1Posi - tag1Data.start);
-    var tag2Line = getLineByPosi(tag1Cont, tag2Posi - tag2Data.start);
+    var tag2Line = getLineByPosi(tag2Cont, tag2Posi - tag2Data.start);
 
     throwError('\n'
         + '  <red>error info : </red><yellow>' + errInfo + '</yellow>\n'
