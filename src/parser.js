@@ -33,9 +33,9 @@ function parse(content, conf) {
         );        
     };
 
-    console.log(cont.length);
-    console.log(cont);
-    console.log(posiData);
+    // console.log(cont.length);
+    // console.log(cont);
+    // console.log(posiData);
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
