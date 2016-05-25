@@ -7,8 +7,8 @@
         "email": "wang_jian_bo037@126.com"
     },
 
-    "main": "parser.js",
-
+    "main": "./src/parser.js",
+    "bin" : { "sjtc": "./bin/sjtc.js" },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/keven-wang/sjtc.git"
@@ -17,14 +17,16 @@
     "homepage": "https://github.com/keven-wang/sjtc",    
 
     "dependencies": {
-        "rich-console" : ""
+        "rich-console" : "",
+        "commander"    : ""
     },
 
     "keywords": [
         "javascript",
         "template",
         "heredoc",
-        "ssi"
+        "include",
+        "include_once"
     ],
 
     "readmeFilename": "README.md"    

@@ -1,5 +1,5 @@
 var fs = require('fs');
-var parser = require('../../parser');
+var parser = require('../../src/parser');
 var file = __dirname + "/tmpl.html";
 var cont = fs.readFileSync(file, 'utf-8');
 var code = parser.parse(file, {
@@ -7,3 +7,5 @@ var code = parser.parse(file, {
     output_tab_space : 2,
     first_line_no_space: false
 });
+
+console.log(code);

@@ -1,6 +1,6 @@
 var fs = require('fs');
 var file = __dirname + "/tmpl.html";
-var parser = require('../../parser');
+var parser = require('../../src/parser');
 
 var tmplCode = parser.parse(file);
 var tmplFn = new Function('return ' + tmplCode)();
@@ -18,5 +18,6 @@ var users  = [
     { order: 11, name: 'user-10', age: 18, gender: 'f'  }
 ];
 
+fs.writeFileSync(__dirname + '/tmpl.js', tmplCode);
 console.log( '\n----------generate code----------\n\n%s', tmplCode );
 console.log( '\n----------generate html----------\n\n%s', tmplFn({ users: users }) );
