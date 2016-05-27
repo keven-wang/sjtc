@@ -12,7 +12,7 @@ var RConsole = require('rich-console');
  * @return  {Array<JSON>}
  */
 function parse(content, conf) {
-    var data = expandInclude(content, conf);
+    var data = expandInclude2(content, conf);
     var reg  = /(<%=|<%%|<%|%%>|%>|<!--|-->)/;
     var posiData = data.posiData, cont = data.cont;
     var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
@@ -23,7 +23,7 @@ function parse(content, conf) {
     };
 
     var throwParseError = function(tagPosi, errInfo){
-        util.throwParseError(errInfo, cont, posiData, startPosi);      
+        util.throwParseError(errInfo, data, startPosi);      
     };
 
     var throwInvliadTagNestingErr = function(tag2, tag2Posi){
@@ -33,9 +33,10 @@ function parse(content, conf) {
         );        
     };
 
-    // console.log(cont.length);
-    // console.log(cont);
-    // console.log(posiData);
+    //console.log(cont.length);
+    //console.log(cont);
+    //console.log(posiData);
+    //console.log(data.editLog);
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
@@ -234,6 +235,116 @@ function getConstCode(tokens, extraSpace, config){
                 + '\n' + preSpace + ');'
           )
     );
+}
+
+function expandInclude2(content, context){
+    var ctx = util.merge({
+        input_tab_space: 4,
+        globalLineNo : 1,
+        preSpace: '',
+        incFiles: [],
+        editLog : [],
+        posiData: [],
+        parents : [],
+        index   : 0
+    }, context);
+    
+    var tabSpace = util.space(ctx.input_tab_space);
+    var curFile  = path.resolve(ctx.file);
+    var incFiles = ctx.incFiles;
+    var preSpace = ctx.preSpace;
+    var parents  = ctx.parents;
+    var curIndx  = ctx.index;
+    var addLen = 0, reg = new RegExp((''
+        + '(?:'              // 匹配只包含include的行
+        +     '^'         
+        +     '([ \\t]*)?'   // include的前导缩进
+        +     '<!--#include(?:_once)?\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
+        +     '[ \\t]*$'     // include后可选的空格
+        + ')'
+        + '|(?:'            // 匹配不包含include的非空行
+        +      '^'
+        +      '([ \\t]*)?' // 行内容前可选的空格
+        +      '(.*?)'      // 行内容
+        +      '$'
+        + ')'  
+    ), 'mgi');
+
+    ctx.editLog.push({ at: ctx.globalLineNo, type: 'inc-start', file: curFile });
+    var cont = content.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont, lastIndex){        
+        var matchLineCount = m.split('\n').length;
+
+        // 对于不包含ssi的普通行非空行，直接在前面补充空格
+        if(lineCont != undefined) { 
+            var result = (lineSpace || '') + preSpace + lineCont;
+            addLen += result.length - m.length;
+            ctx.globalLineNo++;
+
+            return result; 
+        }
+
+        if(!curFile) { util.throwError('<cyan>@stjc.expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
+        
+        var dir = path.dirname(curFile);
+        var myParents = ctx.parents.slice(0);
+        var mySpace   = preSpace + (ssiSpace || '');
+        var filePath  = path.resolve(path.join(dir, refFile));
+        var isIncOnce = m.search(/<!--#include_once/i) != -1;
+
+        if(!fs.existsSync(filePath)){ 
+            util.throwError(''
+                + '\n<cyan>@stjc.expandInclude</cyan>: '
+                + '<red>the include file <cyan>"' + filePath   + '"</cyan> is not exists! '
+                + 'the following is the include link:</red>\n' 
+                + util.getRefMapStr(filePath, myParents)
+            ); 
+        }
+
+        myParents.unshift(curFile);
+        
+        if(util.hasCircularRef(filePath, myParents)){ 
+            util.throwCircularRefError(filePath, myParents); 
+        }
+       
+        if(isIncOnce && incFiles.indexOf(filePath) != -1){
+            //ctx.editLog.push({ at:ctx.globalLineNo, type:'remove', count:matchLineCount });
+            RConsole.log('<cyan>@stjc.expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
+            ctx.globalLineNo += matchLineCount;
+            addLen -= m.length;
+            return '';
+        }
+
+        var myIndex = curIndx + lastIndex + addLen + (ssiSpace||'').length;        
+        var cont = expandInclude2(fs.readFileSync(filePath, 'utf-8'), { 
+            globalLineNo : ctx.globalLineNo, 
+            posiData: ctx.posiData,
+            editLog : ctx.editLog,
+            incFiles: incFiles,
+            preSpace: mySpace, 
+            parents: myParents,
+            index: myIndex,
+            file: filePath
+        }).cont;
+        
+        var contLineCount = cont.split('\n').length;
+        
+        ctx.editLog.push({ at: ctx.globalLineNo, type: 'add', count: contLineCount - matchLineCount })
+        ctx.globalLineNo += contLineCount;
+        addLen += cont.length - m.length;
+        incFiles.push(filePath);
+
+        return cont;
+    });
+
+    ctx.editLog.push({ at: ctx.globalLineNo, type: 'inc-end'});
+    ctx.posiData.push({
+        preSpace: preSpace,
+        start   : curIndx, 
+        file    : curFile,
+        end     : curIndx + cont.length - preSpace.length - 1
+    });
+
+    return { cont: cont, posiData: ctx.posiData, editLog: ctx.editLog };
 }
 
 /**

@@ -81,20 +81,14 @@ function throwCircularRefError(refFile, parents){
  * @param  {number}posi         错误位置
  * @return {void}
  */
-function throwParseError(err, source, mapData, posi){
-    var data = getFileDataByPosi(mapData, posi);
-    var cont = adjustLeftSpace(
-        fs.readFileSync(data.file, 'utf-8'), 
-        data.preSpace
-    ).slice(data.preSpace.length);
-
-    var line = getLineByPosi(cont, posi - data.start);
+function throwParseError(err, ctx, posi){
+    var line = getLineByPosi(ctx, posi);
 
     throwError('\n'
         + '  <red>error info : </red><yellow>' + err + '</yellow>\n'
         + '  <red>line cont  : </red><yellow>' + line.content.trim() + '</yellow>\n'
-        + '  <red>line num   : </red><yellow>' + line.index + '</yellow>\n'
-        + '  <red>file info  : </red><yellow>' + (data.file || '')   + '</yellow>\n'
+        + '  <red>line num   : </red><yellow>' + line.lineNo + '</yellow>\n'
+        + '  <red>file info  : </red><yellow>' + (line.file || '')   + '</yellow>\n'
     );     
 }
 
@@ -115,7 +109,7 @@ function throwInvalidTagNestingError(source, posiMapData, tag1, tag2, tag1Posi, 
         + source.slice(tag1Posi + tag1.length, tag2Posi)
         + "<pink>" + tag2 + "</pink>"
     );
-    
+
     throwError('\n'
         + '  <red>error info : </red><yellow>invalid tag nesting "<pink>' + tag1 + ' ' + tag2 + '</pink>"</yellow>\n'
         + '  <red>tag1 file  : </red><yellow>' + (tag1Data.file || '')   + '</yellow>\n'
@@ -174,7 +168,57 @@ function getRefMapStr(){
  * @param  {Number}posi     字符位置 
  * @return {JSON}
  */
-function getLineByPosi(cont, posi){
+function getLineByPosi(ctx, posi){
+    var lines = ctx.cont.split(/\n/);
+    var find  = null, count = 0;
+    var editLog = ctx.editLog;
+    var stack = [];
+
+    lines.every(function(l, idx){
+        count += l.length + (idx == 0 ? 0 : 1);
+        if(count > posi){ 
+            find = { content: l, lineNo: idx + 1 }; 
+            return false;
+        }else{
+            return true;
+        }
+    });
+
+    var i, c, r, t, lineNo = find.lineNo;
+    for(i = 0, c = editLog.length; i < c; i++){
+        r = editLog[i];
+        t = r.type;
+
+        if(lineNo < r.at) { break; }
+        if( t == 'inc-start' ) {
+            stack.unshift({ base: r.at, file: r.file, delta: 0 });
+            continue;          
+        }
+
+        if( t == 'add' ){
+            stack[0].delta += r.count;
+            continue; 
+        }
+
+        if( t == 'inc-end') {
+            if(lineNo == r.at  ) { break; } 
+            if(stack.length > 1) { stack.shift(); }
+        }  
+    }
+
+    //console.log(JSON.stringify(ctx.cont));
+    console.log(ctx.cont);
+    console.log('line no: %s', lineNo);
+    console.log(find);
+    console.log(stack);
+    console.log(ctx.editLog);
+    find.file   = stack[0].file;
+    find.lineNo = 1 + (lineNo - stack[0].base - stack[0].delta);
+    return find;  
+}
+
+
+function getLineByPosi_bak(cont, posi){
     var lines = cont.split(/\n/);
     var find = null, count = 0;
 
