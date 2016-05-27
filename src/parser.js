@@ -14,29 +14,25 @@ var RConsole = require('rich-console');
 function parse(content, conf) {
     var data = expandInclude(content, conf);
     var reg  = /(<%=|<%%|<%|%%>|%>|<!--|-->)/;
-    var posiData = data.posiData, cont = data.cont;
+    var posiData  = data.posiData, cont = data.cont;
     var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
-    var curDepth = 0, curType, isInCmt = false, mapData = [];
+    var curDepth  = 0, curType, isInCmt = false, mapData = [];
 
     var getFile = function(posi) {
         return util.getFileDataByPosi(posiData, posi).file;
     };
 
     var throwParseError = function(tagPosi, errInfo){
-        util.throwParseError(errInfo, data, startPosi);      
+        util.throwParseError(errInfo, data, ctx[0].posi);      
     };
 
     var throwInvliadTagNestingErr = function(tag2, tag2Posi){
         util.throwInvalidTagNestingError(
-            cont, posiData, ctx[0].val, tag2, 
+            data, ctx[0].val, tag2, 
             ctx[0].posi, tag2Posi
         );        
     };
 
-    //console.log(cont.length);
-    //console.log(cont);
-    //console.log(posiData);
-    //console.log(data.editLog);
     cont.split(reg).forEach(function(i){
         if(!i || i.length == 0) { return; }
 
@@ -127,7 +123,7 @@ function format(tokens, conf){
     var outLen  = output.join('').length;
     var mapData = [];
 
-    // 向输出数组中写入内容的同事记录下内容所在的文件.
+    // 向输出数组中写入内容的同时记录下内容所在的文件.
     // 目前只记录代码块, 也就是<%...%>中的内容所在
     // 的文件信息，插值<%=...%>错误的定位比较麻烦，
     // 暂时还没有想好怎么实现。
@@ -184,22 +180,40 @@ function format(tokens, conf){
     appendCont(extraSpace + "}");
     output = output.join('');
     
-    var err = util.existsScriptError(output, 'line-num-in-grenate-code');
+    var err = util.existsScriptError(output, 'exists syntax error in the generate code, line number');
 
     if(!err){
         return util.removeDuplicateBlank(output);
     
     }else{
+        var message = err.message.replace(/^SyntaxError:\s/i, '');
         var file = (err.line 
             ? util.getFileByLine(output, mapData, err.line)
             : 'sorry, can not locate the file where the error in correctly!, '
               + 'you can test to search it in the file: ' + conf.file
         );
         
+        if(err.line){
+            var lines = output.split('\n').map(function(c, i) {
+                var no = i + 1;
+                var ln = no + '     '.slice(no.toString().length);
+                return (no == err.line
+                    ? '<pink>'   + ln + c + '</pink>'
+                    : '<yellow>' + ln + '</yellow>' + c
+                );
+            });
+
+            lines[err.line - 1] = '<pink>' + lines[err.line - 1] + '</pink>';
+            output = lines.join('\n');
+        }
+
         RConsole.log(''
-            + '<cyan>@stjc.format =></cyan><red> exists syntax error in you template code, please resolve them.</red>'
-            + '\n  <yellow>file  </yellow>: <green>' + file        + '</green>'
-            + '\n  <yellow>error </yellow>: <pink>'  + err.message + '</pink>'
+            + '<red>exists syntax error in you template code, please fix it.</red>'
+            + '\n<red>file  =></red> <yellow>' + file    + '</yellow>'
+            + '\n<red>error =></red> <pink>'   + message + '</pink>'
+            + '\n<cyan>----------------[generate code]---------------------</cyan>\n'
+            + output
+            + '\n<cyan>----------------------------------------------------</cyan>\n'
         );
 
         throw new Error(err.message);        
@@ -262,10 +276,10 @@ function expandInclude(content, context){
         +     '<!--#include(?:_once)?\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
         +     '[ \\t]*$'     // include后可选的空格
         + ')'
-        + '|(?:'            // 匹配不包含include的非空行
+        + '|(?:'             // 匹配不包含include的非空行
         +      '^'
-        +      '([ \\t]*)?' // 行内容前可选的空格
-        +      '(.*?)'      // 行内容
+        +      '([ \\t]*)?'  // 行内容前可选的空格
+        +      '(.*?)'       // 行内容
         +      '$'
         + ')'  
     ), 'mgi');
@@ -283,7 +297,7 @@ function expandInclude(content, context){
             return result; 
         }
 
-        if(!curFile) { util.throwError('<cyan>@stjc.expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
+        if(!curFile) { util.throwError('<cyan>expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
         
         var dir = path.dirname(curFile);
         var myParents = ctx.parents.slice(0);
@@ -306,9 +320,11 @@ function expandInclude(content, context){
             util.throwCircularRefError(filePath, myParents); 
         }
        
+        // 对于include_once，如果文件已经包含，将本行内容清空，只保留换行.
+        // 保留换行是为了后期出现标签未闭合等错误时能够快速定位到标签所在文件.
+        // 否则include会造成行增加，而include_once会造成行减少，计算起来太
+        // 麻烦。保留换行后只需要减去include添加的行就成了.
         if(isIncOnce && incFiles.indexOf(filePath) != -1){
-            //ctx.editLog.push({ at:ctx.globalLineNo, type:'remove', count:matchLineCount });
-            RConsole.log('<cyan>@stjc.expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
             ctx.globalLineNo += matchLineCount;
             addLen -= m.length;
             return '';
@@ -336,7 +352,9 @@ function expandInclude(content, context){
         return cont;
     });
 
-    ctx.editLog.push({ at: ctx.globalLineNo, type: 'inc-end'});
+    // ctx.globalLineNo 始终指向当前行，但inclue结束位于上一行
+    ctx.editLog.push({ at: ctx.globalLineNo - 1, type: 'inc-end'});
+    
     ctx.posiData.push({
         preSpace: preSpace,
         start   : curIndx, 

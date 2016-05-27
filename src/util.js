@@ -83,38 +83,42 @@ function throwCircularRefError(refFile, parents){
  */
 function throwParseError(err, ctx, posi){
     var line = getLineByPosi(ctx, posi);
+    var root = path.resolve('.');
+    var file = line.file ? path.relative(root, line.file) : '';
 
     throwError('\n'
-        + '  <red>error info : </red><yellow>' + err + '</yellow>\n'
-        + '  <red>line cont  : </red><yellow>' + line.content.trim() + '</yellow>\n'
-        + '  <red>line num   : </red><yellow>' + line.lineNo + '</yellow>\n'
-        + '  <red>file info  : </red><yellow>' + (line.file || '')   + '</yellow>\n'
+        + '  <red>error info => </red><yellow>' + err + '</yellow>\n'
+        + '  <red>line cont  => </red><yellow>' + line.content.trim() + '</yellow>\n'
+        + '  <red>line num   => </red><yellow>' + line.lineNo + '</yellow>\n'
+        + '  <red>file info  => </red><yellow>' + file + '</yellow>\n'
     );     
 }
 
 /**
  * 抛出错误的标签嵌套错误.
- * @param   {String}source
- * @param   {Object}posiMapData
+ * @param   {Object}ctx
  * @param   {String}tag1
  * @param   {String}tag2  
  * @param   {integer}tag1Posi
  * @param   {integer}tag2Posi
  */
-function throwInvalidTagNestingError(source, posiMapData, tag1, tag2, tag1Posi, tag2Posi){
-    var tag1Data = getFileDataByPosi(posiMapData, tag1Posi);
-    var tag2Data = getFileDataByPosi(posiMapData, tag2Posi);
+function throwInvalidTagNestingError(ctx, tag1, tag2, tag1Posi, tag2Posi){
+    var root  = path.resolve('.');
+    var line1 = getLineByPosi(ctx, tag1Posi);
+    var line2 = getLineByPosi(ctx, tag2Posi);
+    var file1 = path.relative(root, line1.file);
+    var file2 = path.relative(root, line2.file);
     var codeFrag = (""
         + "<pink>" + tag1 + "</pink>"
-        + source.slice(tag1Posi + tag1.length, tag2Posi)
+        + ctx.cont.slice(tag1Posi + tag1.length, tag2Posi)
         + "<pink>" + tag2 + "</pink>"
     );
 
     throwError('\n'
-        + '  <red>error info : </red><yellow>invalid tag nesting "<pink>' + tag1 + ' ' + tag2 + '</pink>"</yellow>\n'
-        + '  <red>tag1 file  : </red><yellow>' + (tag1Data.file || '')   + '</yellow>\n'
-        + '  <red>tag2 file  : </red><yellow>' + (tag2Data.file || '')   + '</yellow>\n'
-        + '  <red>code fragment: </red>\n' + codeFrag + '\n'
+        + '  <red>error message => </red><yellow>invalid tag nesting "<pink>' + tag1 + ' ' + tag2 + '</pink>"</yellow>\n'
+        + '  <red>tag1 position => </red><yellow>' + file1   + '</yellow> : <pink>' + line1.lineNo + ' </pink>\n'
+        + '  <red>tag2 position => </red><yellow>' + file2   + '</yellow> : <pink>' + line2.lineNo + ' </pink>\n'
+        + '  <red>code fragment => </red>\n' + codeFrag + '\n'
     );      
 }
 
@@ -170,9 +174,8 @@ function getRefMapStr(){
  */
 function getLineByPosi(ctx, posi){
     var lines = ctx.cont.split(/\n/);
-    var find  = null, count = 0;
+    var find  = null, count = 0, stack = [];
     var editLog = ctx.editLog;
-    var stack = [];
 
     lines.every(function(l, idx){
         count += l.length + (idx == 0 ? 0 : 1);
@@ -183,6 +186,10 @@ function getLineByPosi(ctx, posi){
             return true;
         }
     });
+
+    if(find == null){
+        return { lineNo : '', content: '', file   : ''};
+    }
 
     var i, c, r, t, lineNo = find.lineNo;
     for(i = 0, c = editLog.length; i < c; i++){
@@ -206,12 +213,6 @@ function getLineByPosi(ctx, posi){
         }  
     }
 
-    //console.log(JSON.stringify(ctx.cont));
-    console.log(ctx.cont);
-    console.log('line no: %s', lineNo);
-    console.log(find);
-    console.log(stack);
-    console.log(ctx.editLog);
     find.file   = stack[0].file;
     find.lineNo = 1 + (lineNo - stack[0].base - stack[0].delta);
     return find;  
@@ -236,11 +237,13 @@ function getFileByLine(cont, mapData, ln){
     var find  = null;
 
     mapData.every(function(i){
-        if(i.start <= start && i.end >= end){ find = i.file; }
+        if(i.start <= start && i.end >= end){ 
+            find = path.relative(path.resolve('.'), i.file); 
+        }
         return find == null;
     });
 
-    return find;  
+    return find; 
 }
 
 /**
