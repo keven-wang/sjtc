@@ -12,7 +12,7 @@ var RConsole = require('rich-console');
  * @return  {Array<JSON>}
  */
 function parse(content, conf) {
-    var data = expandInclude2(content, conf);
+    var data = expandInclude(content, conf);
     var reg  = /(<%=|<%%|<%|%%>|%>|<!--|-->)/;
     var posiData = data.posiData, cont = data.cont;
     var startPosi = 0, endPosi = 0, ctx = [], tokens = [];
@@ -237,7 +237,7 @@ function getConstCode(tokens, extraSpace, config){
     );
 }
 
-function expandInclude2(content, context){
+function expandInclude(content, context){
     var ctx = util.merge({
         input_tab_space: 4,
         globalLineNo : 1,
@@ -315,7 +315,7 @@ function expandInclude2(content, context){
         }
 
         var myIndex = curIndx + lastIndex + addLen + (ssiSpace||'').length;        
-        var cont = expandInclude2(fs.readFileSync(filePath, 'utf-8'), { 
+        var cont = expandInclude(fs.readFileSync(filePath, 'utf-8'), { 
             globalLineNo : ctx.globalLineNo, 
             posiData: ctx.posiData,
             editLog : ctx.editLog,
@@ -345,102 +345,6 @@ function expandInclude2(content, context){
     });
 
     return { cont: cont, posiData: ctx.posiData, editLog: ctx.editLog };
-}
-
-/**
- * 对将要编译的内容进行预处理，将其中的include展开并返回展开后内容.
- * @param  {String}content
- * @param  {Object}ctx
- * @return {String}
- */
-function expandInclude(content, context){
-    var ctx = util.merge({
-        input_tab_space: 4,
-        preSpace: '',
-        incFiles: [],
-        posiData: [],
-        parents: [], 
-        index: 0,
-    }, context);
-    
-    var tabSpace = util.space(ctx.input_tab_space);
-    var curFile  = path.resolve(ctx.file);
-    var incFiles = ctx.incFiles;
-    var preSpace = ctx.preSpace;
-    var parents  = ctx.parents;
-    var curIndx  = ctx.index;
-    var lineNo = 1;
-    var addLen = 0;
-    var reg = new RegExp((''
-        + '(?:'              // 匹配include
-        +     '(^[ \\t]*)?'  // include的前导缩进
-        +     '<!--#include(?:_once)?\\s+file\\s*=\\s*[\'"](.*?)[\'"]\\s*-->'
-        + ')'
-        + '|(?:(^[ \\t]*)?(\\S.*?)$)'  // 匹配不包含include的非空行
-    ), 'mgi');
-
-    var cont = content.replace(reg, function(m, ssiSpace, refFile, lineSpace, lineCont, lastIndex){
-        lineNo++;
-        
-        // 对于不包含ssi的普通行非空行，直接在前面补充空格
-        if(lineCont) { 
-            var result = (lineSpace || '') + preSpace + lineCont;
-            addLen += result.length - m.length;
-            return result; 
-        }
-
-        if(!curFile) { util.throwError('<cyan>@stjc.expandInclude</cyan>: <red>please add property <cyan>"file"</cyan> for ctx!</red>') }
-        
-        var dir = path.dirname(curFile);
-        var myParents = ctx.parents.slice(0);
-        var mySpace   = preSpace + (ssiSpace || '');
-        var filePath  = path.resolve(path.join(dir, refFile));
-        var isIncOnce = m.search(/<!--#include_once/i) != -1;
-
-        if(!fs.existsSync(filePath)){ 
-            util.throwError(''
-                + '\n<cyan>@stjc.expandInclude</cyan>: '
-                + '<red>the include file <cyan>"' + filePath   + '"</cyan> is not exists! '
-                + 'the following is the include link:</red>\n' 
-                + util.getRefMapStr(filePath, myParents)
-            ); 
-        }
-
-        myParents.unshift(curFile);
-        
-        if(util.hasCircularRef(filePath, myParents)){ 
-            util.throwCircularRefError(filePath, myParents); 
-        }
-       
-        if(isIncOnce && incFiles.indexOf(filePath) != -1){
-            RConsole.log('<cyan>@stjc.expandInclude=></cyan><green> the file "%s" has include, skip it!</green>', filePath);
-            addLen -= m.length;
-            return '';
-        }
-
-        var myIndex = curIndx + lastIndex + addLen + (ssiSpace||'').length;        
-        var cont = expandInclude(fs.readFileSync(filePath, 'utf-8'), { 
-            posiData: ctx.posiData,
-            incFiles: incFiles,
-            preSpace: mySpace, 
-            parents: myParents,
-            index: myIndex,
-            file: filePath
-        }).cont;
-        
-        addLen += cont.length - m.length;
-        incFiles.push(filePath);
-        return cont;
-    });
-
-    ctx.posiData.push({
-        preSpace: preSpace,
-        start   : curIndx, 
-        file    : curFile,
-        end     : curIndx + cont.length - preSpace.length - 1
-    });
-
-    return { cont: cont, posiData: ctx.posiData };
 }
 
 /**

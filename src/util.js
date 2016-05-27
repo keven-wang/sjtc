@@ -217,24 +217,6 @@ function getLineByPosi(ctx, posi){
     return find;  
 }
 
-
-function getLineByPosi_bak(cont, posi){
-    var lines = cont.split(/\n/);
-    var find = null, count = 0;
-
-    lines.every(function(l, idx){
-        count += l.length + (idx == 0 ? 0 : 1);
-        if(count > posi){ 
-            find = { content: l, index: idx + 1 }; 
-            return false;
-        }else{
-            return true;
-        }
-    });
-
-    return find;  
-}
-
 /**
  * 根据行号查找错误位于的文件, 如果无法定位返回null.
  * @param  {String}cont
