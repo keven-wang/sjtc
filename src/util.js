@@ -181,10 +181,9 @@ function getLineByPosi(ctx, posi){
         count += l.length + (idx == 0 ? 0 : 1);
         if(count > posi){ 
             find = { content: l, lineNo: idx + 1 }; 
-            return false;
-        }else{
-            return true;
         }
+
+        return find == null;
     });
 
     if(find == null){
@@ -196,18 +195,17 @@ function getLineByPosi(ctx, posi){
         r = editLog[i];
         t = r.type;
 
-        if(lineNo < r.at) { break; }
+        if( lineNo < r.at ) { break; }
+        
         if( t == 'inc-start' ) {
             stack.unshift({ base: r.at, file: r.file, delta: 0 });
             continue;          
-        }
-
-        if( t == 'add' ){
+        
+        }else if( t == 'add' ){
             stack[0].delta += r.count;
             continue; 
-        }
-
-        if( t == 'inc-end') {
+        
+        }else if( t == 'inc-end') {
             if(lineNo == r.at  ) { break; } 
             if(stack.length > 1) { stack.shift(); }
         }  
